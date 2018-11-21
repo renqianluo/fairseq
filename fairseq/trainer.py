@@ -325,6 +325,68 @@ class Trainer(object):
             self.meters['valid_nll_loss'].update(logging_output.get('nll_loss', 0), ntokens)
 
         return logging_output
+    
+    def valid_step_with_gradients(self, sample, cache, raise_oom=False):
+        """Do forward pass in evaluation mode with gradients."""
+        self.model.eval()
+
+        sample = self._prepare_sample(sample)
+        assert sample is not None
+
+        try:
+            _loss, sample_size, logging_output = self.criterion(self.model, sample)
+            _loss.backward()
+            if self.args.select_data_by == 'emb':
+                grads = self.model.encoder.embed_tokens.grad.mean() + self.model.decoder.embed_tokens.grad.mean()
+                grads = grads.numpy().tolist()
+            else:
+                assert self.args.select_data_by == 'all'
+                grads = 0
+                for p in self.model.parameters():
+                    grads += p.grad.mean()
+                grads = grads.numpy().tolist()
+            if not sample['id'] in cache:
+                cache[sample['id']] = [grads]
+            else:
+                cache[sample['id']].append(grads)
+            
+        except RuntimeError as e:
+            if 'out of memory' in str(e) and not raise_oom:
+                print('| WARNING: ran out of memory, retrying batch')
+                for p in self.model.parameters():
+                    if p.grad is not None:
+                        del p.grad  # free some memory
+                torch.cuda.empty_cache()
+                return self.valid_step_with_gradients(sample, cache, raise_oom=True)
+            else:
+                raise e
+
+        # gather logging outputs from all replicas
+        if self.args.distributed_world_size > 1:
+            logging_output, sample_size = zip(*distributed_utils.all_gather_list(
+                [logging_output, sample_size],
+            ))
+            logging_output = list(logging_output)
+            sample_size = list(sample_size)
+        else:
+            logging_output = [logging_output]
+            sample_size = [sample_size]
+
+        # aggregate logging outputs and sample sizes
+        logging_output = self.task.aggregate_logging_outputs(
+            logging_output, self.criterion
+        )
+        sample_size = self.task.grad_denom(
+            sample_size, self.criterion
+        )
+
+        # update meters for validation
+        ntokens = logging_output.get('ntokens', 0)
+        self.meters['valid_loss'].update(logging_output.get('loss', 0), sample_size)
+        if 'nll_loss' in logging_output:
+            self.meters['valid_nll_loss'].update(logging_output.get('nll_loss', 0), ntokens)
+
+        return logging_output
 
     def dummy_train_step(self, dummy_batch):
         """Dummy training step for warming caching allocator."""

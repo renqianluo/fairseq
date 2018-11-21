@@ -99,7 +99,7 @@ class TranslationTask(FairseqTask):
         Args:
             split (str): name of the split (e.g., train, valid, test)
         """
-
+        shuffle = kwargs.pop('shuffle', True)
         def split_exists(split, src, tgt, lang, data_path):
             filename = os.path.join(data_path, '{}.{}-{}.{}'.format(split, src, tgt, lang))
             if self.args.raw_text and IndexedRawTextDataset.exists(filename):
@@ -161,6 +161,7 @@ class TranslationTask(FairseqTask):
             left_pad_target=self.args.left_pad_target,
             max_source_positions=self.args.max_source_positions,
             max_target_positions=self.args.max_target_positions,
+            shuffle=shuffle,
         )
 
     def max_positions(self):

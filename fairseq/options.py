@@ -25,6 +25,15 @@ def get_training_parser(default_task='translation'):
     add_checkpoint_args(parser)
     return parser
 
+def get_select_data_parser(default_task='translation'):
+    parser = get_parser('Trainer', default_task)
+    add_dataset_args(parser, train=True)
+    add_select_dataset_args(parser)
+    add_distributed_training_args(parser)
+    add_model_args(parser)
+    add_optimization_args(parser)
+    add_checkpoint_args(parser)
+    return parser
 
 def get_generation_parser(interactive=False, default_task='translation'):
     parser = get_parser('Generation', default_task)
@@ -143,6 +152,15 @@ def get_parser(desc, default_task='translation'):
     return parser
 
 
+def add_select_dataset_args(parser):
+    group = parser.add_argument_group('Select data from dataset.')
+    group.add_argument('--select-ratio', default=0.2, type=float, help='Ratio of dataset to select out.')
+    group.add_argument('--select-method', default='random', type=str, choices=['random', 'gradients'], help='Select data randomly or according to gradients.')
+    group.add_argument('--select-epochs', default=0, type=int, help='number of epochs to run.')
+    group.add_argument('--select-average-gradients', default=False, action='store_true', help='average gradients of each epoch.')
+    group.add_argument('--select-data-output', default=None, type=str, help='Path to store indices file.')
+    group.add_argument('--select-data-by', default='emb', type=str, choices=['emb', 'all'],  help='Select data by gradient of emb or all params.')
+
 def add_dataset_args(parser, train=False, gen=False):
     group = parser.add_argument_group('Dataset and data loading')
     group.add_argument('--skip-invalid-size-inputs-valid-test', action='store_true',
@@ -151,6 +169,7 @@ def add_dataset_args(parser, train=False, gen=False):
                        help='maximum number of tokens in a batch')
     group.add_argument('--max-sentences', '--batch-size', type=int, metavar='N',
                        help='maximum number of sentences in a batch')
+    group.add_argument('--indices-file', default=None, type=str, help='File that stores indices of data to train.')
     if train:
         group.add_argument('--train-subset', default='train', metavar='SPLIT',
                            choices=['train', 'valid', 'test'],

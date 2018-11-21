@@ -66,12 +66,12 @@ class IndexedDataset(torch.utils.data.Dataset):
             assert magic == b'TNTIDX\x00\x00'
             version = f.read(8)
             assert struct.unpack('<Q', version) == (1,)
-            code, self.element_size = struct.unpack('<QQ', f.read(16))
+            code, self.element_size = struct.unpack('<QQ', f.read(16)) # size in bytes of each token
             self.dtype = dtypes[code]
-            self.size, self.s = struct.unpack('<QQ', f.read(16))
-            self.dim_offsets = read_longs(f, self.size + 1)
-            self.data_offsets = read_longs(f, self.size + 1)
-            self.sizes = read_longs(f, self.s)
+            self.size, self.s = struct.unpack('<QQ', f.read(16)) # size: number of data
+            self.dim_offsets = read_longs(f, self.size + 1) # [0, 1, 2, ..., N]
+            self.data_offsets = read_longs(f, self.size + 1) # start of each data, [0, 100, 200, 300...]
+            self.sizes = read_longs(f, self.s) # size of each data, [100, 100, 100, ...]
 
     def read_data(self, path):
         self.data_file = open(data_file_path(path), 'rb', buffering=0)
