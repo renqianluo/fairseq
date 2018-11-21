@@ -78,10 +78,11 @@ class IndexedDataset(torch.utils.data.Dataset):
                 print('Indices file is provided, just use part of the dataset.')
                 with open(self.indices_file, 'r') as f:
                     indices = f.read().splitlines()
-                    indices = list(map(int, indices))
+                    indices = sorted(list(map(int, indices)))
                     self.size = len(indices)
-                    self.dim_offsets = self.dim_offsets[indices]
-                    self.data_offsets = self.data_offsets[indices]
+                    index_after_last = self.dim_offsets[indices[-1]] + 1
+                    self.dim_offsets = self.dim_offsets[indices+[index_after_last]]
+                    self.data_offsets = self.data_offsets[indices+[index_after_last]]
                     self.sizes = self.sizes[indices]
 
     def read_data(self, path):
