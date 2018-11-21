@@ -176,10 +176,9 @@ def train(args, trainer, task, epoch_itr):
 def random_select(args, dataset, seed):
     # dataset is IndexedCachedDataset
     size = len(dataset)
-    indices = list(range(size))
     select_num = int(size * args.select_ratio)
     with data_utils.numpy_seed(seed):
-        indices = np.random.sample(indices, select_num)
+        indices = np.random.permutation(range(size))[:select_num]
     if not os.path.exists(args.select_data_output):
         os.makedirs(args.select_data_output, exist_ok=True)
     with open(os.path.join(args.select_data_output, 'data.indices'), 'w') as f:
