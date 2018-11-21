@@ -35,7 +35,7 @@ def main(args):
     task = tasks.setup_task(args)
 
     # Load dataset splits
-    load_dataset_splits(task, ['train', 'valid'])
+    load_dataset_splits(task, ['train', 'valid'], args.indices_file)
 
     # Build model and criterion
     model = task.build_model(args)
@@ -328,10 +328,10 @@ def load_checkpoint(args, trainer, epoch_itr):
     return False
 
 
-def load_dataset_splits(task, splits):
+def load_dataset_splits(task, splits, indices_file):
     for split in splits:
         if split == 'train':
-            task.load_dataset(split, combine=True)
+            task.load_dataset(split, combine=True, indices_file=indices_file)
         else:
             for k in itertools.count():
                 split_k = split + (str(k) if k > 0 else '')

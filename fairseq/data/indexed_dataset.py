@@ -52,11 +52,12 @@ def data_file_path(prefix_path):
 class IndexedDataset(torch.utils.data.Dataset):
     """Loader for TorchNet IndexedDataset"""
 
-    def __init__(self, path, fix_lua_indexing=False, read_data=True):
+    def __init__(self, path, fix_lua_indexing=False, read_data=True, indices_file=None):
         super().__init__()
         self.fix_lua_indexing = fix_lua_indexing
         self.read_index(path)
         self.data_file = None
+        self.indices_file=indices_file
         if read_data:
             self.read_data(path)
 
@@ -72,6 +73,16 @@ class IndexedDataset(torch.utils.data.Dataset):
             self.dim_offsets = read_longs(f, self.size + 1) # [0, 1, 2, ..., N]
             self.data_offsets = read_longs(f, self.size + 1) # start of each data, [0, 100, 200, 300...]
             self.sizes = read_longs(f, self.s) # size of each data, [100, 100, 100, ...]
+            
+            if self.indices_file is not None:
+                print('Indices file is provided, just use part of the dataset.')
+                with open(self.indices_file, 'r') as f:
+                    indices = f.read().splitlines()
+                    indices = list(map(int, indices))
+                    self.size = len(indices)
+                    self.dim_offsets = self.dim_offsets[indices]
+                    self.data_offsets = self.data_offsets[indices]
+                    self.sizes = self.sizes[indices]
 
     def read_data(self, path):
         self.data_file = open(data_file_path(path), 'rb', buffering=0)
@@ -108,8 +119,8 @@ class IndexedDataset(torch.utils.data.Dataset):
 
 class IndexedCachedDataset(IndexedDataset):
 
-    def __init__(self, path, fix_lua_indexing=False):
-        super().__init__(path, fix_lua_indexing, True)
+    def __init__(self, path, fix_lua_indexing=False, indices_file=None):
+        super().__init__(path, fix_lua_indexing, True, indices_file=indices_file)
         self.cache = None
         self.cache_index = {}
 
@@ -173,7 +184,7 @@ class IndexedRawTextDataset(IndexedDataset):
     """Takes a text file as input and binarizes it in memory at instantiation.
     Original lines are also kept in memory"""
 
-    def __init__(self, path, dictionary, append_eos=True, reverse_order=False):
+    def __init__(self, path, dictionary, append_eos=True, reverse_order=False, indices_file=None):
         self.tokens_list = []
         self.lines = []
         self.sizes = []

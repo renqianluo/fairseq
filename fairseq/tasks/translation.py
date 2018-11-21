@@ -100,6 +100,7 @@ class TranslationTask(FairseqTask):
             split (str): name of the split (e.g., train, valid, test)
         """
         shuffle = kwargs.pop('shuffle', True)
+        indices_file = kwargs.pop('indices_file', None)
         def split_exists(split, src, tgt, lang, data_path):
             filename = os.path.join(data_path, '{}.{}-{}.{}'.format(split, src, tgt, lang))
             if self.args.raw_text and IndexedRawTextDataset.exists(filename):
@@ -108,11 +109,11 @@ class TranslationTask(FairseqTask):
                 return True
             return False
 
-        def indexed_dataset(path, dictionary):
+        def indexed_dataset(path, dictionary, indices_file=None):
             if self.args.raw_text:
-                return IndexedRawTextDataset(path, dictionary)
+                return IndexedRawTextDataset(path, dictionary, indices_file=indices_file)
             elif IndexedDataset.exists(path):
-                return IndexedCachedDataset(path, fix_lua_indexing=True)
+                return IndexedCachedDataset(path, fix_lua_indexing=True, indices_file=indices_file, )
             return None
 
         src_datasets = []
@@ -136,8 +137,8 @@ class TranslationTask(FairseqTask):
                     else:
                         raise FileNotFoundError('Dataset not found: {} ({})'.format(split, data_path))
 
-                src_datasets.append(indexed_dataset(prefix + src, self.src_dict))
-                tgt_datasets.append(indexed_dataset(prefix + tgt, self.tgt_dict))
+                src_datasets.append(indexed_dataset(prefix + src, self.src_dict, indices_file=indices_file))
+                tgt_datasets.append(indexed_dataset(prefix + tgt, self.tgt_dict, indices_file=indices_file))
 
                 print('| {} {} {} examples'.format(data_path, split_k, len(src_datasets[-1])))
 
