@@ -98,11 +98,12 @@ def main(args):
     for k, v in cache.items():
         cache[k]=np.mean(v)
     indices = sorted(cache, key=cache.get, reverse=True)
-    data_size = task.dataset['train'].size
+    data_size = task.dataset('valid').src.size
     assert data_size== len(indices)
     select_num = int(data_size * args.select_ratio)
     indices = indices[:select_num]
-    
+    if not os.path.exists(args.select_data_output):
+        os.makedirs(args.select_data_output, exist_ok=True)
     with open(os.path.join(args.select_data_output, 'data.indices'), 'w') as f:
         for i in indices:
             f.write('{}\n'.format(i))
