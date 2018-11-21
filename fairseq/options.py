@@ -154,7 +154,7 @@ def get_parser(desc, default_task='translation'):
 
 def add_select_dataset_args(parser):
     group = parser.add_argument_group('Select data from dataset.')
-    group.add_argument('--select-ratio', default=0.2, type=float, help='Ratio of dataset to select out.')
+    group.add_argument('--select-ratio', default=0.1, type=float, help='Ratio of dataset to select out.')
     group.add_argument('--select-method', default='random', type=str, choices=['random', 'gradients'], help='Select data randomly or according to gradients.')
     group.add_argument('--select-epochs', default=0, type=int, help='number of epochs to run.')
     group.add_argument('--select-average-gradients', default=False, action='store_true', help='average gradients of each epoch.')
