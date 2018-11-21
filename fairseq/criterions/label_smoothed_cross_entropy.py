@@ -37,8 +37,8 @@ class LabelSmoothedCrossEntropyCriterion(FairseqCriterion):
         loss, nll_loss = self.compute_loss(model, net_output, sample, reduce=reduce)
         sample_size = sample['target'].size(0) if self.args.sentence_avg else sample['ntokens']
         logging_output = {
-            'loss': utils.item(loss.data) if reduce else loss.data,
-            'nll_loss': utils.item(nll_loss.data) if reduce else nll_loss.data,
+            'loss': utils.item(loss.data) if reduce else loss.sum().data,
+            'nll_loss': utils.item(nll_loss.data) if reduce else nll_loss.sum().data,
             'ntokens': sample['ntokens'],
             'nsentences': sample['target'].size(0),
             'sample_size': sample_size,
