@@ -401,7 +401,7 @@ def load_checkpoint(args, trainer, epoch_itr):
     return False
 
 
-def load_dataset_splits(task, splits):
+def load_dataset_splits(task, splits, shuffle=False):
     for split in splits:
         if split == 'train':
             task.load_dataset(split, combine=True, shuffle=False)
