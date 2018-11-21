@@ -333,23 +333,29 @@ class Trainer(object):
 
         sample = self._prepare_sample(sample)
         assert sample is not None
+        num_samples = sample['id'].shape[0]
 
         try:
-            _loss, sample_size, logging_output = self.criterion(self.model, sample)
-            _loss.backward()
-            if self.args.select_data_by == 'emb':
-                grads = self.model.encoder.embed_tokens.weight.grad.mean() + self.model.decoder.embed_tokens.weight.grad.mean()
-                grads = grads.numpy().tolist()
-            else:
-                assert self.args.select_data_by == 'all'
-                grads = 0
-                for p in self.model.parameters():
-                    grads += p.grad.mean()
-                grads = grads.numpy().tolist()
-            if not sample['id'] in cache:
-                cache[sample['id']] = [grads]
-            else:
-                cache[sample['id']].append(grads)
+            loss, sample_size, logging_output = self.criterion(self.model, sample, reduce=False)
+            #loss.backward()
+            ids = sample['id'].cpu().numpy().tolist()
+            for i in num_samples:
+                self.model.zero_grad()
+                loss[i].backward(retain_graph=True)
+                if self.args.select_data_by == 'emb':
+                    grads = self.model.encoder.embed_tokens.weight.grad.mean() + self.model.decoder.embed_tokens.weight.grad.mean()
+                    grads = grads.numpy().tolist()
+                else:
+                    assert self.args.select_data_by == 'all'
+                    grads = 0
+                    for p in self.model.parameters():
+                        grads += p.grad.mean()
+                    grads = grads.numpy().tolist()
+                id = ids[i]
+                if not id in cache:
+                    cache[id] = [grads]
+                else:
+                    cache[id].append(grads)
             
         except RuntimeError as e:
             if 'out of memory' in str(e) and not raise_oom:
