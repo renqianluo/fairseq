@@ -417,7 +417,7 @@ def load_dataset_splits(task, splits):
 
 
 if __name__ == '__main__':
-    parser = options.get_training_parser()
+    parser = options.get_select_data_parser()
     args = options.parse_args_and_arch(parser)
 
     if args.distributed_port > 0 or args.distributed_init_method is not None:
