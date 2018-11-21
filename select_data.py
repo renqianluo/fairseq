@@ -175,9 +175,8 @@ def train(args, trainer, task, epoch_itr):
 
 def random_select(args, dataset, seed):
     # dataset is IndexedCachedDataset
-    indices = dataset.dim_offsets
-    size = dataset.size
-    assert size == len(indices)
+    size = len(dataset)
+    indices = list(range(size))
     select_num = int(size * args.select_ratio)
     with data_utils.numpy_seed(seed):
         indices = np.random.sample(indices, select_num)
