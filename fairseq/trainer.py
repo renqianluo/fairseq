@@ -339,7 +339,7 @@ class Trainer(object):
             loss, sample_size, logging_output = self.criterion(self.model, sample, reduce=False)
             #loss.backward()
             ids = sample['id'].cpu().numpy().tolist()
-            for i in num_samples:
+            for i in range(num_samples):
                 self.model.zero_grad()
                 loss[i].backward(retain_graph=True)
                 if self.args.select_data_by == 'emb':
