@@ -55,9 +55,9 @@ class IndexedDataset(torch.utils.data.Dataset):
     def __init__(self, path, fix_lua_indexing=False, read_data=True, indices_file=None):
         super().__init__()
         self.fix_lua_indexing = fix_lua_indexing
+        self.indices_file = indices_file
         self.read_index(path)
         self.data_file = None
-        self.indices_file=indices_file
         if read_data:
             self.read_data(path)
 
