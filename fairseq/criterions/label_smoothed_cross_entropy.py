@@ -47,30 +47,29 @@ class LabelSmoothedCrossEntropyCriterion(FairseqCriterion):
 
     def compute_loss(self, model, net_output, sample, reduce=True):
         lprobs = model.get_normalized_probs(net_output, log_probs=True)
-        """
-        lprobs = lprobs.view(-1, lprobs.size(-1))
-        target = model.get_targets(sample, net_output).view(-1, 1)
-        non_pad_mask = target.ne(self.padding_idx)
-        nll_loss = -lprobs.gather(dim=-1, index=target)[non_pad_mask]
-        smooth_loss = -lprobs.sum(dim=-1, keepdim=True)[non_pad_mask]
         if reduce:
+            lprobs = lprobs.view(-1, lprobs.size(-1))
+            target = model.get_targets(sample, net_output).view(-1, 1)
+            non_pad_mask = target.ne(self.padding_idx)
+            nll_loss = -lprobs.gather(dim=-1, index=target)[non_pad_mask]
+            smooth_loss = -lprobs.sum(dim=-1, keepdim=True)[non_pad_mask]
+            #if reduce:
             nll_loss = nll_loss.sum()
             smooth_loss = smooth_loss.sum()
-        eps_i = self.eps / lprobs.size(-1)
-        loss = (1. - self.eps) * nll_loss + eps_i * smooth_loss
-        return loss, nll_loss
-        """
-        target = model.get_targets(sample, net_output)
-        non_pad_mask = target.ne(self.padding_idx).float()
-        nll_loss = -lprobs.gather(dim=-1, index=target.unsqueeze(-1)).squeeze_() * non_pad_mask
-        smooth_loss = -lprobs.sum(dim=-1, keepdim=True).squeeze_() * non_pad_mask
-        eps_i = self.eps / lprobs.size(-1)
-        loss = (1. - self.eps) * nll_loss + eps_i * smooth_loss
-        loss = loss.sum(1)  # sum over sentence length dim, get [num_samples]
-        if reduce:
-            nll_loss = nll_loss.sum()
-            loss = loss.sum()
-        return loss, nll_loss
+            eps_i = self.eps / lprobs.size(-1)
+            loss = (1. - self.eps) * nll_loss + eps_i * smooth_loss
+            return loss, nll_loss
+        
+        else:
+            target = model.get_targets(sample, net_output)
+            non_pad_mask = target.ne(self.padding_idx).float()
+            nll_loss = -lprobs.gather(dim=-1, index=target.unsqueeze(-1)).squeeze_() * non_pad_mask
+            smooth_loss = -lprobs.sum(dim=-1, keepdim=True).squeeze_() * non_pad_mask
+            eps_i = self.eps / lprobs.size(-1)
+            loss = (1. - self.eps) * nll_loss + eps_i * smooth_loss
+            loss = loss.sum(1)  # sum over sentence length dim, get [num_samples]
+            return loss, nll_loss
+
 
     @staticmethod
     def aggregate_logging_outputs(logging_outputs):

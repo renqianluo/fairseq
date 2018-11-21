@@ -333,7 +333,7 @@ class Trainer(object):
 
         sample = self._prepare_sample(sample)
         assert sample is not None
-        num_samples = sample['id'].shape[0]
+        num_samples = sample['id'].size(0)
 
         try:
             loss, sample_size, logging_output = self.criterion(self.model, sample, reduce=False)
@@ -349,7 +349,8 @@ class Trainer(object):
                     assert self.args.select_data_by == 'all'
                     grads = 0
                     for p in self.model.parameters():
-                        grads += p.grad.mean().cpu().numpy().tolist()
+                        grads += p.grad.mean()
+                    grads = grads.cpu().numpy().tolist()
                 id = ids[i]
                 if not id in cache:
                     cache[id] = [grads]
