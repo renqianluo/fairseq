@@ -268,14 +268,14 @@ def validate_with_gradients(args, trainer, task, epoch_itr, cache):
     # Initialize data iterator
     itr = task.get_batch_iterator(
         dataset=task.dataset(subset),
-        max_tokens=None,
-        max_sentences=1,
+        max_tokens=args.max_tokens,
+        max_sentences=args.max_sentences_valid,
         max_positions=utils.resolve_max_positions(
             task.max_positions(),
             trainer.get_model().max_positions(),
         ),
         ignore_invalid_inputs=args.skip_invalid_size_inputs_valid_test,
-        required_batch_size_multiple=1,
+        required_batch_size_multiple=8,
         seed=args.seed,
         num_shards=args.distributed_world_size,
         shard_id=args.distributed_rank,
