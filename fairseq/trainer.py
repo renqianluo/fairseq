@@ -344,13 +344,12 @@ class Trainer(object):
                 loss[i].backward(retain_graph=True)
                 if self.args.select_data_by == 'emb':
                     grads = self.model.encoder.embed_tokens.weight.grad.mean() + self.model.decoder.embed_tokens.weight.grad.mean()
-                    grads = grads.numpy().tolist()
+                    grads = grads.cpu().numpy().tolist()
                 else:
                     assert self.args.select_data_by == 'all'
                     grads = 0
                     for p in self.model.parameters():
-                        grads += p.grad.mean()
-                    grads = grads.numpy().tolist()
+                        grads += p.grad.mean().cpu().numpy().tolist()
                 id = ids[i]
                 if not id in cache:
                     cache[id] = [grads]
