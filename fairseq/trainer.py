@@ -273,6 +273,7 @@ class Trainer(object):
         """Do forward pass in evaluation mode."""
         with torch.no_grad():
             self.model.eval()
+            self.model.zero_grad()
 
             sample = self._prepare_sample(sample)
             if sample is None:
@@ -337,7 +338,7 @@ class Trainer(object):
             _loss, sample_size, logging_output = self.criterion(self.model, sample)
             _loss.backward()
             if self.args.select_data_by == 'emb':
-                grads = self.model.encoder.embed_tokens.grad.mean() + self.model.decoder.embed_tokens.grad.mean()
+                grads = self.model.encoder.embed_tokens.weight.grad.mean() + self.model.decoder.embed_tokens.weight.grad.mean()
                 grads = grads.numpy().tolist()
             else:
                 assert self.args.select_data_by == 'all'
