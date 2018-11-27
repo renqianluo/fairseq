@@ -112,9 +112,13 @@ def main(args):
     output_file = os.path.join(args.select_data_output, 'data.indices')
     if args.select_world_size > 1:
         output_file = '{}.{}'.format(output_file, args.select_worker_id)
-    with open(output_file, 'w') as f:
-        for i in indices:
-            f.write('{}\n'.format(i))
+        with open(output_file, 'w') as f:
+            for i in indices:
+                f.write('{}\t{}\n'.format(i, cache[i]))
+    else:
+        with open(output_file, 'w') as f:
+            for i in indices:
+                f.write('{}\n'.format(i))
     train_meter.stop()
     print('| done training in {:.1f} seconds'.format(train_meter.sum))
 
