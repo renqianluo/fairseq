@@ -307,9 +307,15 @@ def validate_with_gradients(args, trainer, task, epoch_itr, cache):
     extra_meters = collections.defaultdict(lambda: AverageMeter())
     data_size = task.dataset('train').src.size
     for sample in progress:
+        # multi worker parallel
         if args.select_world_size > 1:
-            if sample['id'].data < int(data_size / args.select_world_size * args.select_worker_id) or sample['id'].data >= int(data_size / args.select_world_size * (args.select_worker_id + 1)):
-                continue
+            # not the last worker
+            if args.select_worker_id != args.select_world_size - 1:
+                if sample['id'].data < int(data_size // args.select_world_size * args.select_worker_id) or sample['id'].data >= int(data_size // args.select_world_size * (args.select_worker_id + 1)):
+                    continue
+            else:
+                if sample['id'].data < int(data_size // args.select_world_size * args.select_worker_id):
+                    continue
         log_output = trainer.valid_step_with_gradients(sample, cache)
         
         for k, v in log_output.items():
