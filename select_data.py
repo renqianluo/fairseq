@@ -293,10 +293,14 @@ def validate_with_gradients(args, trainer, task, epoch_itr, cache):
         if meter is not None:
             meter.reset()
     extra_meters = collections.defaultdict(lambda: AverageMeter())
-
+    data_size = task.dataset('train').src.size
     for sample in progress:
+        if args.select_world_size > 1:
+            ratio = 1 / args.select_world_size
+            if sample['id'].data < int(data_size * ratio * args.select_worker_id) or sample['id'].data >= int(data_size * ratio * (args.select_worker_id + 1)):
+                continue
         log_output = trainer.valid_step_with_gradients(sample, cache)
-
+        
         for k, v in log_output.items():
             if k in ['loss', 'nll_loss', 'ntokens', 'nsentences', 'sample_size']:
                 continue
