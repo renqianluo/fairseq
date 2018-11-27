@@ -99,7 +99,12 @@ def main(args):
         cache[k]=np.mean(v)
     indices = sorted(cache, key=cache.get, reverse=True)
     data_size = task.dataset('train').src.size
-    #assert data_size== len(indices)
+    if args.select_world_size > 1:
+        if args.select_worker_id != args.select_world_size - 1:
+            data_size = data_size // args.select_world_size
+        else:
+            data_size = data_size - data_size // args.select_world_size * args.select_worker_id
+    assert data_size== len(indices)
     select_num = int(data_size * args.select_ratio)
     indices = indices[:select_num]
     if not os.path.exists(args.select_data_output):
@@ -299,8 +304,7 @@ def validate_with_gradients(args, trainer, task, epoch_itr, cache):
     data_size = task.dataset('train').src.size
     for sample in progress:
         if args.select_world_size > 1:
-            ratio = 1 / args.select_world_size
-            if sample['id'].data < int(data_size * ratio * args.select_worker_id) or sample['id'].data >= int(data_size * ratio * (args.select_worker_id + 1)):
+            if sample['id'].data < int(data_size / args.select_world_size * args.select_worker_id) or sample['id'].data >= int(data_size / args.select_world_size * (args.select_worker_id + 1)):
                 continue
         log_output = trainer.valid_step_with_gradients(sample, cache)
         
