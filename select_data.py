@@ -99,7 +99,7 @@ def main(args):
         cache[k]=np.mean(v)
     indices = sorted(cache, key=cache.get, reverse=True)
     data_size = task.dataset('train').src.size
-    assert data_size== len(indices)
+    #assert data_size== len(indices)
     select_num = int(data_size * args.select_ratio)
     indices = indices[:select_num]
     if not os.path.exists(args.select_data_output):
