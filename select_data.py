@@ -104,7 +104,10 @@ def main(args):
     indices = indices[:select_num]
     if not os.path.exists(args.select_data_output):
         os.makedirs(args.select_data_output, exist_ok=True)
-    with open(os.path.join(args.select_data_output, 'data.indices'), 'w') as f:
+    output_file = os.path.join(args.select_data_output, 'data.indices')
+    if args.select_world_size > 1:
+        output_file = '{}.{}'.format(output_file, args.select_worker_id)
+    with open(output_file, 'w') as f:
         for i in indices:
             f.write('{}\n'.format(i))
     train_meter.stop()
