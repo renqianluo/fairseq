@@ -334,28 +334,27 @@ class Trainer(object):
         sample = self._prepare_sample(sample)
         assert sample is not None
         num_samples = sample['id'].size(0)
-
+        assert  num_samples == 1
         try:
-            loss, sample_size, logging_output = self.criterion(self.model, sample, reduce=False)
+            loss, sample_size, logging_output = self.criterion(self.model, sample)
+            loss = loss / sample_size
             #loss.backward()
-            ids = sample['id'].cpu().numpy().tolist()
-            for i in range(num_samples):
-                self.model.zero_grad()
-                loss[i].backward(retain_graph=True)
-                if self.args.select_data_by == 'emb':
-                    grads = self.model.encoder.embed_tokens.weight.grad.mean() + self.model.decoder.embed_tokens.weight.grad.mean()
-                    grads = grads.cpu().numpy().tolist()
-                else:
-                    assert self.args.select_data_by == 'all'
-                    grads = 0
-                    for p in self.model.parameters():
-                        grads += p.grad.mean()
-                    grads = grads.cpu().numpy().tolist()
-                id = ids[i]
-                if not id in cache:
-                    cache[id] = [grads]
-                else:
-                    cache[id].append(grads)
+            id = sample['id'].cpu().numpy().tolist()
+            self.model.zero_grad()
+            loss.backward()
+            if self.args.select_data_by == 'emb':
+                grads = self.model.encoder.embed_tokens.weight.grad.mean() + self.model.decoder.embed_tokens.weight.grad.mean()
+                grads = grads.cpu().numpy().tolist()
+            else:
+                assert self.args.select_data_by == 'all'
+                grads = 0
+                for p in self.model.parameters():
+                    grads += p.grad.mean()
+                grads = grads.cpu().numpy().tolist()
+            if not id in cache:
+                cache[id] = [grads]
+            else:
+                cache[id].append(grads)
             
         except RuntimeError as e:
             if 'out of memory' in str(e) and not raise_oom:
