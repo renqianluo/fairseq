@@ -36,7 +36,7 @@ class SETransformerModel(FairseqModel):
         TransformerModel.add_args(parser)
         parser.add_argument('--se-on-head', action='store_true', default=False,
                             help='se on head')
-        parser.add_argument('--se-c', type=int, default=16,
+        parser.add_argument('--se-c', type=int, default=1,
                             help='se c')
 
     @classmethod
@@ -618,7 +618,7 @@ class SETransformerDecoderLayer(nn.Module):
 def base_se_architecture(args):
     base_architecture(args)
     args.se_on_head = getattr(args, 'se_on_head', False)
-    args.se_c = getattr(args, 'se_c', 16)
+    args.se_c = getattr(args, 'se_c', 1)
 
 
 @register_model_architecture('se_transformer', 'se_transformer_iwslt_de_en')
