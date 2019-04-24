@@ -290,9 +290,9 @@ class SEMultiheadAttention(nn.Module):
             self.squeeze_fc2_weight = Parameter(torch.Tensor(self.num_heads, self.num_heads))
             self.squeeze_fc2_bias = Parameter(torch.Tensor(self.num_heads))
         else:
-            self.squeeze_fc1_weight = Parameter(torch.Tensor(self.embed_dim, self.embed_dim))
-            self.squeeze_fc1_bias = Parameter(torch.Tensor(self.embed_dim))
-            self.squeeze_fc2_weight = Parameter(torch.Tensor(self.embed_dim, self.embed_dim))
+            self.squeeze_fc1_weight = Parameter(torch.Tensor(self.embed_dim, self.embed_dim//self.se_c))
+            self.squeeze_fc1_bias = Parameter(torch.Tensor(self.embed_dim//self.se_c))
+            self.squeeze_fc2_weight = Parameter(torch.Tensor(self.embed_dim//self.se_c, self.embed_dim))
             self.squeeze_fc2_bias = Parameter(torch.Tensor(self.embed_dim))
 
         self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
@@ -466,9 +466,9 @@ class SEMultiheadAttention(nn.Module):
         if self.se_on_head:
             attn = attn.view(bsz, self.num_heads, tgt_len, self.head_dim)
             z = torch.mean(attn, dim=(2,3))
-            scale = torch.bmm(z, self.squeeze_fc1_weight) + self.squeeze_fc1_bias
+            scale = F.linear(z, self.squeeze_fc1_weight, self.squeeze_fc1_bias)
             scale = torch.relu(scale)
-            scale = torch.bmm(scale, self.squeeze_fc2_weight) + self.squeeze_fc2_bias
+            scale = F.linear(scale, self.squeeze_fc2_weight, self.squeeze_fc2_bias)
             scale = torch.sigmoid(scale)
             attn = attn * scale.unsqueeze(-1).unsqueeze(-1)
             attn = attn.view(bsz * self.num_heads, tgt_len, self.head_dim)
@@ -486,7 +486,7 @@ class SEMultiheadAttention(nn.Module):
             z = torch.mean(attn, dim=1, keepdim=True)
             scale = F.linear(z, self.squeeze_fc1_weight, self.squeeze_fc1_bias)
             scale = torch.relu(scale)
-            scale = F.linear(z, self.squeeze_fc2_weight, self.squeeze_fc2_bias)
+            scale = F.linear(scale, self.squeeze_fc2_weight, self.squeeze_fc2_bias)
             scale = torch.sigmoid(scale)
             attn = attn * scale
             attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
