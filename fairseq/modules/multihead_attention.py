@@ -466,9 +466,9 @@ class SEMultiheadAttention(nn.Module):
         if self.se_on_head:
             attn = attn.view(bsz, self.num_heads, tgt_len, self.head_dim)
             z = torch.mean(attn, dim=(2,3))
-            scale = torch.bmm(z, self.squeeze_fc1_wegiht) + self.squeeze_fc1_bias
+            scale = torch.bmm(z, self.squeeze_fc1_weight) + self.squeeze_fc1_bias
             scale = torch.relu(scale)
-            scale = torch.bmm(scale, self.squeeze_fc2_wegiht) + self.squeeze_fc2_bias
+            scale = torch.bmm(scale, self.squeeze_fc2_weight) + self.squeeze_fc2_bias
             scale = torch.sigmoid(scale)
             attn = attn * scale.unsqueeze(-1).unsqueeze(-1)
             attn = attn.view(bsz * self.num_heads, tgt_len, self.head_dim)
@@ -484,9 +484,9 @@ class SEMultiheadAttention(nn.Module):
         if not self.se_on_head:
             attn = attn.transpose(0, 1).contiguous().view(bsz, tgt_len, embed_dim)
             z = torch.mean(attn, dim=1)
-            scale = torch.bmm(z, self.squeeze_fc1_wegiht) + self.squeeze_fc1_bias
+            scale = torch.bmm(z, self.squeeze_fc1_weight) + self.squeeze_fc1_bias
             scale = torch.relu(scale)
-            scale = torch.bmm(scale, self.squeeze_fc2_wegiht) + self.squeeze_fc2_bias
+            scale = torch.bmm(scale, self.squeeze_fc2_weight) + self.squeeze_fc2_bias
             scale = torch.sigmoid(scale)
             attn = attn * scale.unsqueeze(1)
             attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
