@@ -484,9 +484,9 @@ class SEMultiheadAttention(nn.Module):
         if not self.se_on_head:
             attn = attn.transpose(0, 1).contiguous().view(bsz, tgt_len, embed_dim)
             z = torch.mean(attn, dim=1, keepdim=True)
-            scale = torch.bmm(z, self.squeeze_fc1_weight) + self.squeeze_fc1_bias
+            scale = F.linear(z, self.squeeze_fc1_weight, self.squeeze_fc1_bias)
             scale = torch.relu(scale)
-            scale = torch.bmm(scale, self.squeeze_fc2_weight) + self.squeeze_fc2_bias
+            scale = F.linear(z, self.squeeze_fc2_weight, self.squeeze_fc2_bias)
             scale = torch.sigmoid(scale)
             attn = attn * scale.unsqueeze(1)
             attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
