@@ -267,7 +267,7 @@ class SEMultiheadAttention(nn.Module):
     """
 
     def __init__(self, embed_dim, num_heads, dropout=0., bias=True, add_bias_kv=False, add_zero_attn=False,
-                 se_on_head=False, se_c=16):
+                 se_on_head=False, se_c=1):
         super().__init__()
         self.embed_dim = embed_dim
         self.num_heads = num_heads
@@ -290,9 +290,9 @@ class SEMultiheadAttention(nn.Module):
             self.squeeze_fc2_weight = Parameter(torch.Tensor(self.num_heads, self.num_heads))
             self.squeeze_fc2_bias = Parameter(torch.Tensor(self.num_heads))
         else:
-            self.squeeze_fc1_weight = Parameter(torch.Tensor(self.embed_dim, self.embed_dim//self.se_c))
+            self.squeeze_fc1_weight = Parameter(torch.Tensor(self.embed_dim//self.se_c, self.embed_dim))
             self.squeeze_fc1_bias = Parameter(torch.Tensor(self.embed_dim//self.se_c))
-            self.squeeze_fc2_weight = Parameter(torch.Tensor(self.embed_dim//self.se_c, self.embed_dim))
+            self.squeeze_fc2_weight = Parameter(torch.Tensor(self.embed_dim, self.embed_dim//self.se_c))
             self.squeeze_fc2_bias = Parameter(torch.Tensor(self.embed_dim))
 
         self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
