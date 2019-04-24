@@ -34,10 +34,10 @@ class SETransformerModel(FairseqModel):
         """Add model-specific arguments to the parser."""
         # fmt: off
         TransformerModel.add_args(parser)
-        parser.add_argument('--se-on-head', action='store_true',
+        parser.add_argument('--se-on-head', action='store_true', default=False,
                             help='se on head')
         parser.add_argument('--se-c', type=int, default=16,
-                            help='se on head')
+                            help='se c')
 
     @classmethod
     def build_model(cls, args, task):
@@ -617,6 +617,8 @@ class SETransformerDecoderLayer(nn.Module):
 @register_model_architecture('se_transformer', 'se_transformer')
 def base_se_architecture(args):
     base_architecture(args)
+    args.se_on_head = getattr(args, 'se_on_head', False)
+    args.se_c = getattr(args, 'se_c', 16)
 
 
 @register_model_architecture('se_transformer', 'se_transformer_iwslt_de_en')
