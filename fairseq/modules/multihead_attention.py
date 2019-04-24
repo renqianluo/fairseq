@@ -488,7 +488,7 @@ class SEMultiheadAttention(nn.Module):
             scale = torch.relu(scale)
             scale = F.linear(z, self.squeeze_fc2_weight, self.squeeze_fc2_bias)
             scale = torch.sigmoid(scale)
-            attn = attn * scale.unsqueeze(1)
+            attn = attn * scale
             attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
 
         if need_weights:
