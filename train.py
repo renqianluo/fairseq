@@ -10,36 +10,42 @@ Train a new model on one or across multiple GPUs.
 """
 
 import collections
-import itertools
 import math
 import os
 import random
+import shutil
 
 import torch
 
-from fairseq import distributed_utils, options, progress_bar, tasks, utils
+from fairseq import checkpoint_utils, distributed_utils, options, progress_bar, tasks, utils
 from fairseq.data import iterators
 from fairseq.trainer import Trainer
 from fairseq.meters import AverageMeter, StopwatchMeter
-from fairseq.utils import import_user_module
 
 
 def main(args, init_distributed=False):
-    import_user_module(args)
+    utils.import_user_module(args)
 
-    if args.max_tokens is None:
-        args.max_tokens = 6000
-    print(args)
+    assert args.max_tokens is not None or args.max_sentences is not None, \
+        'Must specify batch size either with --max-tokens or --max-sentences'
 
+    # Initialize CUDA and distributed training
     if torch.cuda.is_available() and not args.cpu:
         torch.cuda.set_device(args.device_id)
     torch.manual_seed(args.seed)
+    if init_distributed:
+        args.distributed_rank = distributed_utils.distributed_init(args)
+
+    # Print args
+    print(args)
 
     # Setup task, e.g., translation, language modeling, etc.
     task = tasks.setup_task(args)
 
     # Load dataset splits
-    load_dataset_splits(args, task)
+    task.load_dataset(args.train_subset, combine=True, epoch=0)
+    for valid_sub_split in args.valid_subset.split(','):
+        task.load_dataset(valid_sub_split, combine=True, epoch=0)
 
     # Build model and criterion
     model = task.build_model(args)
@@ -51,24 +57,18 @@ def main(args, init_distributed=False):
         sum(p.numel() for p in model.parameters() if p.requires_grad),
     ))
 
-    # Make a dummy batch to (i) warm the caching allocator and (ii) as a
-    # placeholder DistributedDataParallel when there's an uneven number of
-    # batches per worker.
-    max_positions = utils.resolve_max_positions(
-        task.max_positions(),
-        model.max_positions(),
-    )
-    dummy_batch = task.dataset(args.train_subset).get_dummy_batch(args.max_tokens, max_positions)
-    oom_batch = task.dataset(args.train_subset).get_dummy_batch(1, max_positions)
-
     # Build trainer
-    trainer = Trainer(args, task, model, criterion, dummy_batch, oom_batch)
+    trainer = Trainer(args, task, model, criterion)
     print('| training on {} GPUs'.format(args.distributed_world_size))
     print('| max tokens per GPU = {} and max sentences per GPU = {}'.format(
         args.max_tokens,
         args.max_sentences,
     ))
 
+    max_positions = utils.resolve_max_positions(
+        task.max_positions(),
+        model.max_positions(),
+    )
     # Initialize dataloader
     epoch_itr = task.get_batch_iterator(
         dataset=task.dataset(args.train_subset),
@@ -83,15 +83,8 @@ def main(args, init_distributed=False):
         num_workers=args.num_workers,
     )
 
-    # Initialize distributed training (after data loading)
-    if init_distributed:
-        import socket
-        args.distributed_rank = distributed_utils.distributed_init(args)
-        print('| initialized host {} as rank {}'.format(socket.gethostname(), args.distributed_rank))
-
     # Load the latest checkpoint if one is available
-    if not load_checkpoint(args, trainer, epoch_itr):
-        trainer.dummy_train_step([dummy_batch])
+    load_checkpoint(args, trainer, epoch_itr, max_positions, task)
 
     # Train until the learning rate gets too small
     max_epoch = args.max_epoch or math.inf
@@ -114,15 +107,39 @@ def main(args, init_distributed=False):
         # save checkpoint
         if epoch_itr.epoch % args.save_interval == 0:
             save_checkpoint(args, trainer, epoch_itr, valid_losses[0])
+
+        epoch_itr = reload_train(args, epoch_itr, max_positions, task)
     train_meter.stop()
     print('| done training in {:.1f} seconds'.format(train_meter.sum))
+
+
+def reload_train(args, epoch_itr, max_positions, task):
+    # nothing needs to be done when the dataset is not sharded.
+    if "data" not in args or ("data" in args and len(args.data.split(":")) == 1):
+        return epoch_itr
+    print("| Reloading shard of train data at epoch: ", epoch_itr.epoch)
+    task.load_dataset(args.train_subset, combine=True, epoch=epoch_itr.epoch)
+    epoch_itr = task.get_batch_iterator(
+        dataset=task.dataset(args.train_subset),
+        max_tokens=args.max_tokens,
+        max_sentences=args.max_sentences,
+        max_positions=max_positions,
+        ignore_invalid_inputs=True,
+        required_batch_size_multiple=args.required_batch_size_multiple,
+        seed=args.seed,
+        num_shards=args.distributed_world_size,
+        shard_id=args.distributed_rank,
+        num_workers=args.num_workers,
+        epoch=epoch_itr.epoch,
+    )
+    return epoch_itr
 
 
 def train(args, trainer, task, epoch_itr):
     """Train the model for one epoch."""
     # Update parameters every N batches
     update_freq = args.update_freq[epoch_itr.epoch - 1] \
-            if epoch_itr.epoch <= len(args.update_freq) else args.update_freq[-1]
+        if epoch_itr.epoch <= len(args.update_freq) else args.update_freq[-1]
 
     # Initialize data iterator
     itr = epoch_itr.next_epoch_itr(
@@ -135,7 +152,7 @@ def train(args, trainer, task, epoch_itr):
     )
 
     extra_meters = collections.defaultdict(lambda: AverageMeter())
-    first_valid = args.valid_subset.split(',')[0]
+    valid_subsets = args.valid_subset.split(',')
     max_update = args.max_update or math.inf
     for i, samples in enumerate(progress, start=epoch_itr.iterations_in_epoch):
         log_output = trainer.train_step(samples)
@@ -160,7 +177,7 @@ def train(args, trainer, task, epoch_itr):
 
         num_updates = trainer.get_num_updates()
         if args.save_interval_updates > 0 and num_updates % args.save_interval_updates == 0 and num_updates > 0:
-            valid_losses = validate(args, trainer, task, epoch_itr, [first_valid])
+            valid_losses = validate(args, trainer, task, epoch_itr, valid_subsets)
             save_checkpoint(args, trainer, epoch_itr, valid_losses[0])
 
         if num_updates >= max_update:
@@ -292,16 +309,16 @@ def save_checkpoint(args, trainer, epoch_itr, val_loss):
 
     checkpoint_conds = collections.OrderedDict()
     checkpoint_conds['checkpoint{}.pt'.format(epoch)] = (
-            end_of_epoch and not args.no_epoch_checkpoints and
-            epoch % args.save_interval == 0
+        end_of_epoch and not args.no_epoch_checkpoints and
+        epoch % args.save_interval == 0
     )
     checkpoint_conds['checkpoint_{}_{}.pt'.format(epoch, updates)] = (
-            not end_of_epoch and args.save_interval_updates > 0 and
-            updates % args.save_interval_updates == 0
+        not end_of_epoch and args.save_interval_updates > 0 and
+        updates % args.save_interval_updates == 0
     )
     checkpoint_conds['checkpoint_best.pt'] = (
-            val_loss is not None and
-            (not hasattr(save_checkpoint, 'best') or val_loss < save_checkpoint.best)
+        val_loss is not None and
+        (not hasattr(save_checkpoint, 'best') or val_loss < save_checkpoint.best)
     )
     checkpoint_conds['checkpoint_last.pt'] = True  # keep this last so that it's a symlink
 
@@ -317,8 +334,9 @@ def save_checkpoint(args, trainer, epoch_itr, val_loss):
 
     checkpoints = [os.path.join(args.save_dir, fn) for fn, cond in checkpoint_conds.items() if cond]
     if len(checkpoints) > 0:
-        for cp in checkpoints:
-            trainer.save_checkpoint(cp, extra_state)
+        trainer.save_checkpoint(checkpoints[0], extra_state)
+        for cp in checkpoints[1:]:
+            shutil.copyfile(checkpoints[0], cp)
 
         write_timer.stop()
         print('| saved checkpoint {} (epoch {} @ {} updates) (writing took {} seconds)'.format(
@@ -326,22 +344,25 @@ def save_checkpoint(args, trainer, epoch_itr, val_loss):
 
     if not end_of_epoch and args.keep_interval_updates > 0:
         # remove old checkpoints; checkpoints are sorted in descending order
-        checkpoints = utils.checkpoint_paths(args.save_dir, pattern=r'checkpoint_\d+_(\d+)\.pt')
+        checkpoints = checkpoint_utils.checkpoint_paths(
+            args.save_dir, pattern=r'checkpoint_\d+_(\d+)\.pt',
+        )
         for old_chk in checkpoints[args.keep_interval_updates:]:
             if os.path.lexists(old_chk):
                 os.remove(old_chk)
 
     if args.keep_last_epochs > 0:
         # remove old epoch checkpoints; checkpoints are sorted in descending order
-        checkpoints = utils.checkpoint_paths(args.save_dir, pattern=r'checkpoint(\d+)\.pt')
+        checkpoints = checkpoint_utils.checkpoint_paths(
+            args.save_dir, pattern=r'checkpoint(\d+)\.pt',
+        )
         for old_chk in checkpoints[args.keep_last_epochs:]:
             if os.path.lexists(old_chk):
                 os.remove(old_chk)
 
 
-def load_checkpoint(args, trainer, epoch_itr):
+def load_checkpoint(args, trainer, epoch_itr, max_positions, task):
     """Load a checkpoint and replay dataloader to match."""
-
     # Only rank 0 should attempt to create the required dir
     if args.distributed_rank == 0:
         os.makedirs(args.save_dir, exist_ok=True)
@@ -355,14 +376,21 @@ def load_checkpoint(args, trainer, epoch_itr):
                                               eval(args.optimizer_overrides))
         if extra_state is not None:
             # replay train iterator to match checkpoint
-            epoch_itr.load_state_dict(extra_state['train_iterator'])
+            epoch_itr_state = extra_state['train_iterator']
+
+            # If the loaded checkpoint is not at epoch 0, reload train dataset,
+            # as it could be potentially sharded.
+            if epoch_itr_state['epoch'] != 0:
+                epoch_itr = reload_train(args, epoch_itr, max_positions, task)
+
+            epoch_itr.load_state_dict(epoch_itr_state)
 
             print('| loaded checkpoint {} (epoch {} @ {} updates)'.format(
                 checkpoint_path, epoch_itr.epoch, trainer.get_num_updates()))
 
             trainer.lr_step(epoch_itr.epoch)
             trainer.lr_step_update(trainer.get_num_updates())
-            if 'best' in extra_state:
+            if 'best' in extra_state and not args.reset_optimizer:
                 save_checkpoint.best = extra_state['best']
         return True
     else:
@@ -370,23 +398,10 @@ def load_checkpoint(args, trainer, epoch_itr):
     return False
 
 
-def load_dataset_splits(args, task):
-    task.load_dataset(args.train_subset, combine=True)
-    for split in args.valid_subset.split(','):
-        for k in itertools.count():
-            split_k = split + (str(k) if k > 0 else '')
-            try:
-                task.load_dataset(split_k, combine=False)
-            except FileNotFoundError as e:
-                if k > 0:
-                    break
-                raise e
-
-
-def distributed_main(i, args):
+def distributed_main(i, args, start_rank=0):
     args.device_id = i
     if args.distributed_rank is None:  # torch.multiprocessing.spawn
-        args.distributed_rank = i
+        args.distributed_rank = start_rank + i
     main(args, init_distributed=True)
 
 
@@ -399,9 +414,19 @@ def cli_main():
 
     if args.distributed_init_method is not None:
         # distributed training
-        distributed_main(args.device_id, args)
+        if torch.cuda.device_count() > 1 and not args.distributed_no_spawn:
+            start_rank = args.distributed_rank
+            args.distributed_rank = None  # assign automatically
+            torch.multiprocessing.spawn(
+                fn=distributed_main,
+                args=(args, start_rank),
+                nprocs=torch.cuda.device_count(),
+            )
+        else:
+            distributed_main(args.device_id, args)
     elif args.distributed_world_size > 1:
         # fallback for single node with multiple GPUs
+        assert args.distributed_world_size <= torch.cuda.device_count()
         port = random.randint(10000, 20000)
         args.distributed_init_method = 'tcp://localhost:{port}'.format(port=port)
         args.distributed_rank = None  # set based on device id

@@ -10,13 +10,14 @@ import math
 import numpy as np
 import torch
 
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Tuple
 
 from . import FairseqDataset, data_utils
 
 from fairseq.data import Dictionary
 from fairseq.data.block_pair_dataset import BlockPairDataset
 from fairseq.data.token_block_dataset import TokenBlockDataset
+from fairseq.data.concat_dataset import ConcatDataset
 
 
 class MaskedLMDataset(FairseqDataset):
@@ -53,8 +54,6 @@ class MaskedLMDataset(FairseqDataset):
             replaced with the "MASK" token.
         random_token_prob: specifies the probability of a given token being
             replaced by a random token from the vocabulary.
-        unchanged_prob: specifies the probability of keeping a given
-            token unchanged.
     """
 
     def __init__(
@@ -77,8 +76,10 @@ class MaskedLMDataset(FairseqDataset):
         # Make sure the input datasets are the ones supported
         assert (
             isinstance(dataset, TokenBlockDataset) or
-            isinstance(dataset, BlockPairDataset)
-        ), "MaskedLMDataset only wraps TokenBlockDataset or  BlockPairDataset"
+            isinstance(dataset, BlockPairDataset) or
+            isinstance(dataset, ConcatDataset)
+        ), "MaskedLMDataset only wraps TokenBlockDataset or BlockPairDataset or " \
+           "ConcatDataset"
 
         self.dataset = dataset
         self.sizes = np.array(sizes)
@@ -126,9 +127,6 @@ class MaskedLMDataset(FairseqDataset):
             mask_idx: int,
             pad_idx: int,
             dictionary_token_range: Tuple,
-            masking_ratio: float = 0.15,
-            masking_prob: float = 0.8,
-            random_token_prob: float = 0.1
     ):
         """
         Mask tokens for Masked Language Model training
@@ -146,12 +144,6 @@ class MaskedLMDataset(FairseqDataset):
             dictionary_token_range: range of indices in dictionary which can
                 be used for random word replacement
                 (e.g. without special characters)
-            masking_ratio: specifies what percentage of the blocks should be
-                masked.
-            masking_prob: specifies the probability of a given token being
-                replaced with the "MASK" token.
-            random_token_prob: specifies the probability of a given token being
-                replaced by a random token from the vocabulary
         Return:
             masked_sent: masked sentence
             target: target with words which we are not predicting replaced
@@ -159,7 +151,7 @@ class MaskedLMDataset(FairseqDataset):
         """
         masked_sent = np.copy(sentence)
         sent_length = len(sentence)
-        mask_num = math.ceil(sent_length * masking_ratio)
+        mask_num = math.ceil(sent_length * self.masking_ratio)
         mask = np.random.choice(sent_length, mask_num)
         target = np.copy(sentence)
 
@@ -169,12 +161,12 @@ class MaskedLMDataset(FairseqDataset):
 
                 # replace with mask if probability is less than masking_prob
                 # (Eg: 0.8)
-                if rand < masking_prob:
+                if rand < self.masking_prob:
                     masked_sent[i] = mask_idx
 
                 # replace with random token if probability is less than
                 # masking_prob + random_token_prob (Eg: 0.9)
-                elif rand < (masking_prob + random_token_prob):
+                elif rand < (self.masking_ratio + self.random_token_prob):
                     # sample random token from dictionary
                     masked_sent[i] = (
                         np.random.randint(
@@ -225,7 +217,8 @@ class MaskedLMDataset(FairseqDataset):
 
                 # mask according to specified probabilities.
                 masked_blk_one, masked_tgt_one = self._mask_block(
-                    s["block_one"], self.mask_idx, self.pad_idx, token_range)
+                    s["block_one"], self.mask_idx, self.pad_idx, token_range,
+                )
 
                 tokens = np.concatenate([
                     [self.classif_token_idx], masked_blk_one
@@ -267,7 +260,7 @@ class MaskedLMDataset(FairseqDataset):
             "id": torch.LongTensor([s["id"] for s in samples]),
             "ntokens": sum(len(s["source"]) for s in samples),
             "net_input": {
-                "tokens": merge("source"),
+                "src_tokens": merge("source"),
                 "segment_labels": merge("segment_labels"),
             },
             "lm_target": merge("lm_target"),
@@ -290,33 +283,6 @@ class MaskedLMDataset(FairseqDataset):
             dict: a mini-batch of data
         """
         return self._collate(samples, self.vocab.pad(), self.vocab.eos())
-
-    def get_dummy_batch(
-            self,
-            num_tokens: int,
-            max_positions: Union[float, int],
-            tgt_len: int = 12
-    ):
-        """
-        Return a dummy batch with a given number of tokens.
-        """
-        if isinstance(max_positions, float) or isinstance(max_positions, int):
-            tgt_len = min(tgt_len, max_positions)
-        source = self.vocab.dummy_sentence(tgt_len)
-        sentence_target = 0
-        bsz = num_tokens // tgt_len
-
-        return self.collater(
-            [
-                {
-                    "id": i,
-                    "block_one": source,
-                    "block_two": source if self.has_pairs else None,
-                    "sentence_target": sentence_target if self.has_pairs else None,
-                }
-                for i in range(bsz)
-            ]
-        )
 
     def num_tokens(
             self,

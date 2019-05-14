@@ -4,14 +4,15 @@
 # This source code is licensed under the license found in the LICENSE file in
 # the root directory of this source tree. An additional grant of patent rights
 # can be found in the PATENTS file in the same directory.
+
 from typing import Dict, List, Optional
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from . import FairseqDecoder, FairseqEncoder
 from fairseq.data import Dictionary
+from fairseq.models import FairseqDecoder, FairseqEncoder
 
 
 class BaseFairseqModel(nn.Module):
@@ -325,6 +326,17 @@ class FairseqEncoderModel(BaseFairseqModel):
             the encoder's output, typically of shape `(batch, seq_len, vocab)`
         """
         return self.encoder(src_tokens, src_lengths)
+
+    def get_normalized_probs(self, net_output, log_probs, sample=None):
+        """Get normalized probabilities (or log probs) from a net's output."""
+        encoder_out = net_output['encoder_out']
+        if torch.is_tensor(encoder_out):
+            logits = encoder_out.float()
+            if log_probs:
+                return F.log_softmax(logits, dim=-1)
+            else:
+                return F.softmax(logits, dim=-1)
+        raise NotImplementedError
 
     def max_positions(self):
         """Maximum length supported by the model."""

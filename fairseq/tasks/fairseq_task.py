@@ -62,7 +62,7 @@ class FairseqTask(object):
         Args:
             args (argparse.Namespace): parsed command-line arguments
         """
-        return cls(args)
+        return cls(args, **kwargs)
 
     def load_dataset(self, split, combine=False, **kwargs):
         """Load a given dataset split.
@@ -92,7 +92,7 @@ class FairseqTask(object):
     def get_batch_iterator(
         self, dataset, max_tokens=None, max_sentences=None, max_positions=None,
         ignore_invalid_inputs=False, required_batch_size_multiple=1,
-        seed=1, num_shards=1, shard_id=0, num_workers=0,
+        seed=1, num_shards=1, shard_id=0, num_workers=0, epoch=0,
     ):
         """
         Get an iterator that yields batches of data from the given dataset.
@@ -118,6 +118,7 @@ class FairseqTask(object):
             num_workers (int, optional): how many subprocesses to use for data
                 loading. 0 means the data will be loaded in the main process
                 (default: 0).
+            epoch (int, optional): The epoch to start the iterator from.
 
         Returns:
             ~fairseq.iterators.EpochBatchIterator: a batched iterator over the
@@ -149,6 +150,7 @@ class FairseqTask(object):
             num_shards=num_shards,
             shard_id=shard_id,
             num_workers=num_workers,
+            epoch=epoch,
         )
 
     def build_model(self, args):
@@ -197,7 +199,7 @@ class FairseqTask(object):
                 unk_penalty=args.unkpen,
                 sampling=args.sampling,
                 sampling_topk=args.sampling_topk,
-                sampling_temperature=args.sampling_temperature,
+                temperature=args.temperature,
                 diverse_beam_groups=args.diverse_beam_groups,
                 diverse_beam_strength=args.diverse_beam_strength,
                 match_source_len=args.match_source_len,

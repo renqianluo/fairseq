@@ -6,11 +6,11 @@
 # can be found in the PATENTS file in the same directory.
 
 import inspect
+
 from torch.nn import parallel
 
 from fairseq.legacy_distributed_data_parallel import LegacyDistributedDataParallel
-
-from . import BaseFairseqModel
+from fairseq.models import BaseFairseqModel
 
 
 def DistributedFairseqModel(args, model):
@@ -26,7 +26,6 @@ def DistributedFairseqModel(args, model):
         args (argparse.Namespace): fairseq args
         model (BaseFairseqModel): model to wrap
     """
-
     # determine which DDP class to extend
     assert isinstance(model, BaseFairseqModel)
     if args.ddp_backend == 'c10d':

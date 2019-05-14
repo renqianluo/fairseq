@@ -12,10 +12,9 @@ Data pre-processing: build vocabularies and binarize training data.
 from collections import Counter
 from itertools import zip_longest
 
-from fairseq import options, tasks
+from fairseq import options, tasks, utils
 from fairseq.data import indexed_dataset
 from fairseq.binarizer import Binarizer
-from fairseq.utils import import_user_module
 from multiprocessing import Pool
 
 import os
@@ -23,7 +22,7 @@ import shutil
 
 
 def main(args):
-    import_user_module(args)
+    utils.import_user_module(args)
 
     print(args)
 
@@ -130,9 +129,7 @@ def main(args):
                 )
             pool.close()
 
-        ds = indexed_dataset.IndexedDatasetBuilder(
-            dataset_dest_file(args, output_prefix, lang, "bin")
-        )
+        ds = indexed_dataset.make_builder(dataset_dest_file(args, output_prefix, lang, "bin"), impl=args.dataset_impl)
         merge_result(
             Binarizer.binarize(
                 input_file, vocab, lambda t: ds.add_item(t),
@@ -162,15 +159,15 @@ def main(args):
         )
 
     def make_dataset(vocab, input_prefix, output_prefix, lang, num_workers=1):
-        if args.output_format == "binary":
-            make_binary_dataset(vocab, input_prefix, output_prefix, lang, num_workers)
-        elif args.output_format == "raw":
+        if args.dataset_impl == "raw":
             # Copy original text file to destination folder
             output_text_file = dest_path(
                 output_prefix + ".{}-{}".format(args.source_lang, args.target_lang),
                 lang,
             )
             shutil.copyfile(file_name(input_prefix, lang), output_text_file)
+        else:
+            make_binary_dataset(vocab, input_prefix, output_prefix, lang, num_workers)
 
     def make_all(lang, vocab):
         if args.trainpref:
@@ -234,9 +231,7 @@ def main(args):
 
 
 def binarize(args, filename, vocab, output_prefix, lang, offset, end, append_eos=True):
-    ds = indexed_dataset.IndexedDatasetBuilder(
-        dataset_dest_file(args, output_prefix, lang, "bin")
-    )
+    ds = indexed_dataset.make_builder(dataset_dest_file(args, output_prefix, lang, "bin"), impl=args.dataset_impl)
 
     def consumer(tensor):
         ds.add_item(tensor)
@@ -262,15 +257,6 @@ def dataset_dest_file(args, output_prefix, lang, extension):
 
 def get_offsets(input_file, num_workers):
     return Binarizer.find_offsets(input_file, num_workers)
-
-
-def merge_files(files, outpath):
-    ds = indexed_dataset.IndexedDatasetBuilder("{}.bin".format(outpath))
-    for file in files:
-        ds.merge_file_(file)
-        os.remove(indexed_dataset.data_file_path(file))
-        os.remove(indexed_dataset.index_file_path(file))
-    ds.finalize("{}.idx".format(outpath))
 
 
 def cli_main():

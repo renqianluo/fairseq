@@ -13,6 +13,11 @@ import numpy as np
 from . import FairseqDataset
 
 
+def uniform_sampler(x):
+    # Sample from uniform distribution
+    return np.random.choice(x, 1).item()
+
+
 class MultiCorpusSampledDataset(FairseqDataset):
     """
     Stores multiple instances of FairseqDataset together and in every iteration
@@ -30,16 +35,15 @@ class MultiCorpusSampledDataset(FairseqDataset):
     def __init__(
         self,
         datasets: Dict[str, FairseqDataset],
-        sampling_func: Callable[[List], int] = (
-            # Sample from uniform distribution
-            lambda x: np.random.choice(x, 1).item()
-        ),
+        sampling_func: Callable[[List], int] = None,
         default_key: str = "",
     ):
         super().__init__()
         assert isinstance(datasets, OrderedDict)
         assert default_key in datasets
         self.datasets = datasets
+        if sampling_func is None:
+            sampling_func = uniform_sampler
         self.sampling_func = sampling_func
         self.default_key = default_key
 
@@ -112,15 +116,6 @@ class MultiCorpusSampledDataset(FairseqDataset):
         selected_samples = [sample[selected_key] for sample in samples]
         return self.datasets[selected_key].collater(selected_samples)
 
-    def get_dummy_batch(self, num_tokens: int, max_positions: int):
-        """
-        Return a dummy batch with a given number of tokens. Assumes that the
-        max_positions specified is the same for all underlying datasets.
-        """
-        return self.datasets[self.default_key].get_dummy_batch(
-            num_tokens, max_positions
-        )
-
     def num_tokens(self, index: int):
         """
         Return an example's length (number of tokens), used for batching. Here
@@ -139,7 +134,7 @@ class MultiCorpusSampledDataset(FairseqDataset):
         dataset with max-positions.
         """
         return max(
-            dataset.num_tokens(self._map_index_to_dataset(key, index))
+            dataset.size(self._map_index_to_dataset(key, index))
             for key, dataset in self.datasets.items()
         )
 

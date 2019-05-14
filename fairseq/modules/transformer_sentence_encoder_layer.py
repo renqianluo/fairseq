@@ -5,19 +5,16 @@
 # the root directory of this source tree. An additional grant of patent rights
 # can be found in the PATENTS file in the same directory.
 
-import math
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from fairseq.modules import MultiheadAttention, BertLayerNorm
 
-
-def gelu(x: torch.Tensor) -> torch.Tensor:
-    """
-    Implementation of the gelu activation function.
-    """
-    return x * 0.5 * (1.0 + torch.erf(x / math.sqrt(2.0)))
+from fairseq.modules import (
+    BertLayerNorm,
+    gelu,
+    LayerNorm,
+    MultiheadAttention,
+)
 
 
 class TransformerSentenceEncoderLayer(nn.Module):
@@ -26,7 +23,7 @@ class TransformerSentenceEncoderLayer(nn.Module):
     models.
 
     If the flag use_bert_layer_norm is set then we use the custom
-    BertLayerNorm module instead of nn.LayerNorm.
+    BertLayerNorm module instead of LayerNorm.
     """
 
     def __init__(
@@ -40,6 +37,8 @@ class TransformerSentenceEncoderLayer(nn.Module):
         encoder_normalize_before: bool = False,
         use_bert_layer_norm: bool = False,
         use_gelu: bool = True,
+        add_bias_kv: bool = False,
+        add_zero_attn: bool = False,
     ) -> None:
 
         super().__init__()
@@ -52,14 +51,18 @@ class TransformerSentenceEncoderLayer(nn.Module):
         # Initialize blocks
         self.activation_fn = gelu if use_gelu else F.relu
         self.self_attn = MultiheadAttention(
-            self.embedding_dim, num_attention_heads, dropout=attention_dropout
+            self.embedding_dim,
+            num_attention_heads,
+            dropout=attention_dropout,
+            add_bias_kv=add_bias_kv,
+            add_zero_attn=add_zero_attn,
         )
 
         # layer norm associated with the self attention layer
         self.self_attn_layer_norm = (
             BertLayerNorm(self.embedding_dim)
             if use_bert_layer_norm
-            else nn.LayerNorm(self.embedding_dim, eps=1e-12)
+            else LayerNorm(self.embedding_dim, eps=1e-12)
         )
         self.fc1 = nn.Linear(self.embedding_dim, ffn_embedding_dim)
         self.fc2 = nn.Linear(ffn_embedding_dim, self.embedding_dim)
@@ -68,7 +71,7 @@ class TransformerSentenceEncoderLayer(nn.Module):
         self.final_layer_norm = (
             BertLayerNorm(self.embedding_dim)
             if use_bert_layer_norm
-            else nn.LayerNorm(self.embedding_dim, eps=1e-12)
+            else LayerNorm(self.embedding_dim, eps=1e-12)
         )
 
     def _maybe_layer_norm(

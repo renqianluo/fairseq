@@ -8,6 +8,7 @@
 import contextlib
 import os
 import numpy as np
+from collections import Iterable
 
 
 def infer_language_pair(path):
@@ -96,6 +97,9 @@ def filter_by_size(indices, size_fn, max_positions, raise_exception=False):
                 for key in intersect_keys
             )
         else:
+            # For MultiCorpusSampledDataset, will generalize it later
+            if not isinstance(size_fn(idx), Iterable):
+                return all(size_fn(idx) <= b for b in max_positions)
             return all(a is None or b is None or a <= b
                        for a, b in zip(size_fn(idx), max_positions))
 
@@ -156,7 +160,10 @@ def batch_by_size(
     for idx in indices:
         sample_lens.append(num_tokens_fn(idx))
         sample_len = max(sample_len, sample_lens[-1])
-        assert sample_len <= max_tokens, "sentence at index {idx} exceeds max_tokens limit!".format(idx=idx)
+        assert sample_len <= max_tokens, (
+            f"sentence at index {idx} of size {sample_len} exceeds max_tokens "
+            f"limit of {max_tokens}!"
+        )
         num_tokens = (len(batch) + 1) * sample_len
         if is_batch_full(num_tokens):
             mod_len = max(
@@ -176,7 +183,7 @@ def batch_by_size(
 
 def process_bpe_symbol(sentence: str, bpe_symbol: str):
     if bpe_symbol == 'sentencepiece':
-        sentence = sentence.replace(' ','').replace('\u2581', ' ').strip()
+        sentence = sentence.replace(' ', '').replace('\u2581', ' ').strip()
     elif bpe_symbol is not None:
         sentence = (sentence + ' ').replace(bpe_symbol, '').rstrip()
     return sentence

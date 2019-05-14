@@ -5,17 +5,19 @@
 # the root directory of this source tree. An additional grant of patent rights
 # can be found in the PATENTS file in the same directory.
 
+import itertools
 import os
 
 from collections import OrderedDict
+
+import numpy as np
 
 from fairseq import tokenizer
 from fairseq.data.masked_lm_dictionary import MaskedLMDictionary
 
 from fairseq.data import (
-    IndexedCachedDataset,
-    IndexedDataset,
-    IndexedRawTextDataset,
+    ConcatDataset,
+    indexed_dataset,
     TokenBlockDataset,
 )
 
@@ -38,7 +40,8 @@ class CrossLingualLMTask(FairseqTask):
     @staticmethod
     def add_args(parser):
         """Add task-specific arguments to the parser."""
-        parser.add_argument('data', help='path to data directory')
+        parser.add_argument('data', help='colon separated path to data directories list, \
+                            will be iterated upon during epochs in round-robin manner')
         parser.add_argument('--tokens-per-sample', default=512, type=int,
                             help='max number of total tokens over all segments'
                                  ' per sample')
@@ -75,7 +78,6 @@ class CrossLingualLMTask(FairseqTask):
             lang2id[lang] = id
         return lang2id
 
-
     @classmethod
     def load_dictionary(cls, filename):
         return MaskedLMDictionary.load(filename)
@@ -102,45 +104,68 @@ class CrossLingualLMTask(FairseqTask):
 
         return cls(args, dictionary)
 
-    def load_dataset(self, split, combine=False):
+    def _load_single_lang_dataset(self, split, epoch):
+        loaded_datasets = []
+
+        paths = self.args.data.split(':')
+        assert len(paths) > 0
+        data_path = paths[epoch % len(paths)]
+
+        for k in itertools.count():
+            split_k = split + (str(k) if k > 0 else '')
+            path = os.path.join(data_path, split_k)
+
+            ds = indexed_dataset.make_dataset(
+                path, impl=self.args.dataset_impl, fix_lua_indexing=True,
+                dictionary=self.dictionary,
+            )
+            if ds is None:
+                if k > 0:
+                    break
+                else:
+                    raise FileNotFoundError('Dataset not found: {} ({})'.format(split, data_path))
+
+            # Since we append each block with the classification_token,
+            # we need to effectively create blocks of length
+            # tokens_per_sample-1
+            loaded_datasets.append(
+                TokenBlockDataset(
+                    ds, ds.sizes, self.args.tokens_per_sample - 1,
+                    pad=self.dictionary.pad(), eos=self.dictionary.eos(),
+                )
+            )
+
+            print('| {} {} {} examples'.format(data_path, split_k, len(loaded_datasets[-1])))
+
+        if len(loaded_datasets) == 1:
+            dataset = loaded_datasets[0]
+            sizes = dataset.sizes
+        else:
+            dataset = ConcatDataset(loaded_datasets)
+            sizes = np.concatenate([ds.sizes for ds in loaded_datasets])
+
+        return dataset, sizes
+
+    def load_dataset(self, split, epoch=0, combine=False, **kwargs):
         """Load a given dataset split.
         Args:
             split (str): name of the split (e.g., train, valid, test)
         """
+
         dataset_map = OrderedDict()
 
         for lang in self.langs2id.keys():
             if self.default_key is None:
                 self.default_key = lang
+
             # Datasets are expected to be in "split.lang" format (Eg: train.en)
             language_split = '{}.{}'.format(split, lang)
-            path = os.path.join(self.args.data, language_split)
 
-            if self.args.raw_text and IndexedRawTextDataset.exists(path):
-                ds = IndexedRawTextDataset(path, self.dictionary)
-            elif not self.args.raw_text and IndexedDataset.exists(path):
-                if self.args.lazy_load:
-                    ds = IndexedDataset(path, fix_lua_indexing=True)
-                else:
-                    ds = IndexedCachedDataset(path, fix_lua_indexing=True)
-            else:
-                raise FileNotFoundError('Dataset not found: {} ({})'.format(
-                    language_split, self.args.data))
-
-            # Since we append each block with the classification_token,
-            # we need to effectively create blocks of length
-            # tokens_per_sample-1
-            block_dataset = TokenBlockDataset(
-                dataset=ds,
-                sizes=ds.sizes,
-                block_size=self.args.tokens_per_sample-1,
-                pad=self.dictionary.pad(),
-                eos=self.dictionary.eos()
-            )
+            block_dataset, sizes = self._load_single_lang_dataset(split=language_split, epoch=epoch)
 
             dataset_map[lang] = MaskedLMDataset(
                 dataset=block_dataset,
-                sizes=block_dataset.sizes,
+                sizes=sizes,
                 vocab=self.dictionary,
                 pad_idx=self.dictionary.pad(),
                 mask_idx=self.dictionary.mask(),
@@ -156,6 +181,5 @@ class CrossLingualLMTask(FairseqTask):
             dataset_map, default_key=self.default_key
         )
         print('| {} {} {} examples'.format(
-            self.args.data, split, len(self.datasets[split])
-            )
+            self.args.data.split(':')[epoch], split, len(self.datasets[split]))
         )

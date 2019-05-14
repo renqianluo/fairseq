@@ -4,7 +4,6 @@
 # This source code is licensed under the license found in the LICENSE file in
 # the root directory of this source tree. An additional grant of patent rights
 # can be found in the PATENTS file in the same directory.
-#
 
 import math
 
@@ -12,15 +11,21 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from fairseq.modules import (
-    DownsampledMultiHeadAttention, GradMultiply, LayerNorm,
-    LearnedPositionalEmbedding, LinearizedConvolution,
+from fairseq import checkpoint_utils
+from fairseq.models import (
+    CompositeEncoder,
+    FairseqDecoder,
+    FairseqEncoder,
+    FairseqModel,
+    register_model,
+    register_model_architecture,
 )
-from fairseq import utils
-
-from . import (
-    FairseqEncoder, CompositeEncoder, FairseqDecoder, FairseqModel,
-    register_model, register_model_architecture,
+from fairseq.modules import (
+    DownsampledMultiHeadAttention,
+    GradMultiply,
+    LayerNorm,
+    LearnedPositionalEmbedding,
+    LinearizedConvolution,
 )
 
 
@@ -84,8 +89,7 @@ class FConvModelSelfAtt(FairseqModel):
         pretrained = eval(args.pretrained)
         if pretrained:
             print("| loading pretrained model")
-            trained_model = utils.load_ensemble_for_inference(
-                # not actually for inference, but loads pretrained model parameters
+            trained_model = checkpoint_utils.load_model_ensemble(
                 filenames=[args.pretrained_checkpoint],
                 task=task,
             )[0][0]

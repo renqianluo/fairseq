@@ -13,6 +13,7 @@ from .character_token_embedder import CharacterTokenEmbedder
 from .conv_tbc import ConvTBC
 from .downsampled_multihead_attention import DownsampledMultiHeadAttention
 from .dynamic_convolution import DynamicConv1dTBC
+from .gelu import gelu, gelu_accurate
 from .grad_multiply import GradMultiply
 from .highway import Highway
 from .layer_norm import LayerNorm
@@ -22,6 +23,7 @@ from .linearized_convolution import LinearizedConvolution
 from .logsumexp_moe import LogSumExpMoE
 from .mean_pool_gating_network import MeanPoolGatingNetwork
 from .multihead_attention import MultiheadAttention, SEMultiheadAttention
+from .positional_embedding import PositionalEmbedding
 from .scalar_bias import ScalarBias
 from .sinusoidal_positional_embedding import SinusoidalPositionalEmbedding
 from .transformer_sentence_encoder_layer import TransformerSentenceEncoderLayer
@@ -37,6 +39,8 @@ __all__ = [
     'ConvTBC',
     'DownsampledMultiHeadAttention',
     'DynamicConv1dTBC',
+    'gelu',
+    'gelu_accurate',
     'GradMultiply',
     'Highway',
     'LayerNorm',
@@ -47,6 +51,7 @@ __all__ = [
     'MeanPoolGatingNetwork',
     'MultiheadAttention',
     'SEMultiheadAttention',
+    'PositionalEmbedding',
     'ScalarBias',
     'SinusoidalPositionalEmbedding',
     'TransformerSentenceEncoderLayer',
