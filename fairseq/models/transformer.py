@@ -77,11 +77,13 @@ class TransformerModel(FairseqEncoderDecoderModel):
                             help='path to pre-trained encoder embedding')
         parser.add_argument('--encoder-embed-dim', type=int, metavar='N',
                             help='encoder embedding dimension')
-        parser.add_argument('--encoder-ffn-embed-dim', type=int, metavar='N',
+        parser.add_argument('--encoder-q-dim', type=str,
+                            help='encoder q dimension')
+        parser.add_argument('--encoder-ffn-embed-dim', type=str,
                             help='encoder embedding dimension for FFN')
         parser.add_argument('--encoder-layers', type=int, metavar='N',
                             help='num encoder layers')
-        parser.add_argument('--encoder-attention-heads', type=int, metavar='N',
+        parser.add_argument('--encoder-attention-heads', type=str,
                             help='num encoder attention heads')
         parser.add_argument('--encoder-normalize-before', action='store_true',
                             help='apply layernorm before each encoder block')
@@ -91,11 +93,13 @@ class TransformerModel(FairseqEncoderDecoderModel):
                             help='path to pre-trained decoder embedding')
         parser.add_argument('--decoder-embed-dim', type=int, metavar='N',
                             help='decoder embedding dimension')
-        parser.add_argument('--decoder-ffn-embed-dim', type=int, metavar='N',
+        parser.add_argument('--decoder-q-dim', type=str,
+                            help='decoder qkv dimension')
+        parser.add_argument('--decoder-ffn-embed-dim', type=str,
                             help='decoder embedding dimension for FFN')
         parser.add_argument('--decoder-layers', type=int, metavar='N',
                             help='num decoder layers')
-        parser.add_argument('--decoder-attention-heads', type=int, metavar='N',
+        parser.add_argument('--decoder-attention-heads', type=str,
                             help='num decoder attention heads')
         parser.add_argument('--decoder-learned-pos', action='store_true',
                             help='use learned positional embeddings in the decoder')
@@ -161,6 +165,19 @@ class TransformerModel(FairseqEncoderDecoderModel):
                 tgt_dict, args.decoder_embed_dim, args.decoder_embed_path
             )
 
+        if isinstance(args.encoder_qkv_dim, str):
+            args.encoder_qkv_dim = list(map(int, args.encoder_qkv_dim.strip().split()))
+        if isinstance(args.encoder_ffn_embed_dim, str):
+            args.encoder_ffn_embed_dim = list(map(int, args.encoder_ffn_embed_dim.strip().split()))
+        if isinstance(args.encoder_attention_heads, str):
+            args.encoder_attention_heads = list(map(int, args.encoder_attention_heads.strip().split()))
+        if isinstance(args.decoder_qkv_dim, str):
+            args.decoder_qkv_dim = list(map(int, args.decoder_qkv_dim.strip().split()))
+        if isinstance(args.decoder_ffn_embed_dim, str):
+            args.decoder_ffn_embed_dim = list(map(int, args.decoder_ffn_embed_dim.strip().split()))
+        if isinstance(args.decoder_attention_heads, str):
+            args.decoder_attention_heads = list(map(int, args.decoder_attention_heads.strip().split()))
+
         encoder = cls.build_encoder(args, src_dict, encoder_embed_tokens)
         decoder = cls.build_decoder(args, tgt_dict, decoder_embed_tokens)
         return TransformerModel(encoder, decoder)
@@ -204,7 +221,7 @@ class TransformerEncoder(FairseqEncoder):
 
         self.layers = nn.ModuleList([])
         self.layers.extend([
-            TransformerEncoderLayer(args)
+            TransformerEncoderLayer(args, layer_id=i)
             for i in range(args.encoder_layers)
         ])
 
@@ -338,8 +355,8 @@ class TransformerDecoder(FairseqIncrementalDecoder):
 
         self.layers = nn.ModuleList([])
         self.layers.extend([
-            TransformerDecoderLayer(args, no_encoder_attn)
-            for _ in range(args.decoder_layers)
+            TransformerDecoderLayer(args, no_encoder_attn, layer_id=i)
+            for i in range(args.decoder_layers)
         ])
 
         self.adaptive_softmax = None
@@ -515,11 +532,25 @@ class TransformerEncoderLayer(nn.Module):
         args (argparse.Namespace): parsed command-line arguments
     """
 
-    def __init__(self, args):
+    def __init__(self, args, layer_id):
         super().__init__()
+        
+        self.layer_id = layer_id
         self.embed_dim = args.encoder_embed_dim
+        if isinstance(args.encoder_qkv_dim, int):
+            self.encoder_qkv_dim = args.encoder_qkv_dim
+        else:
+            self.encoder_qkv_dim = args.encoder_qkv_dim[layer_id]
+        if isinstance(args.encoder_ffn_embed_dim, int):
+            self.encoder_ffn_embed_dim = args.encoder_ffn_embed_dim
+        else:
+            self.encoder_ffn_embed_dim = args.encoder_ffn_embed_dim[layer_id]
+        if isinstance(args.encoder_attention_heads, int):
+            self.encoder_attention_heads = args.encoder_attention_heads
+        else:
+            self.encoder_attention_heads = args.encoder_attention_heads[layer_id]
         self.self_attn = MultiheadAttention(
-            self.embed_dim, args.encoder_attention_heads,
+            self.embed_dim, self.encoder_attention_heads, qkvdim=self.encoder_qkv_dim,
             dropout=args.attention_dropout, self_attention=True
         )
         self.self_attn_layer_norm = LayerNorm(self.embed_dim)
@@ -532,8 +563,8 @@ class TransformerEncoderLayer(nn.Module):
             # for backwards compatibility with models that use args.relu_dropout
             self.activation_dropout = getattr(args, 'relu_dropout', 0)
         self.normalize_before = args.encoder_normalize_before
-        self.fc1 = Linear(self.embed_dim, args.encoder_ffn_embed_dim)
-        self.fc2 = Linear(args.encoder_ffn_embed_dim, self.embed_dim)
+        self.fc1 = Linear(self.embed_dim, self.encoder_ffn_embed_dim)
+        self.fc2 = Linear(self.encoder_ffn_embed_dim, self.embed_dim)
         self.final_layer_norm = LayerNorm(self.embed_dim)
 
     def upgrade_state_dict_named(self, state_dict, name):
@@ -607,12 +638,25 @@ class TransformerDecoderLayer(nn.Module):
             (default: False).
     """
 
-    def __init__(self, args, no_encoder_attn=False, add_bias_kv=False, add_zero_attn=False):
+    def __init__(self, args, no_encoder_attn=False, layer_id=None, add_bias_kv=False, add_zero_attn=False):
         super().__init__()
         self.embed_dim = args.decoder_embed_dim
+        if isinstance(args.decoder_qkv_dim, int):
+            self.decoder_qkv_dim = args.decoder_qkv_dim
+        else:
+            self.decoder_qkv_dim = args.decoder_qkv_dim[layer_id]
+        if isinstance(args.decoder_ffn_embed_dim, int):
+            self.decoder_ffn_embed_dim = args.decoder_ffn_embed_dim
+        else:
+            self.decoder_ffn_embed_dim = args.decoder_ffn_embed_dim[layer_id]
+        if isinstance(args.decoder_attention_heads, int):
+            self.decoder_attention_heads = args.decoder_attention_heads
+        else:
+            self.decoder_attention_heads = args.decoder_attention_heads[layer_id]
         self.self_attn = MultiheadAttention(
             embed_dim=self.embed_dim,
             num_heads=args.decoder_attention_heads,
+            qkvdim=self.decoder_qkv_dim,
             dropout=args.attention_dropout,
             add_bias_kv=add_bias_kv,
             add_zero_attn=add_zero_attn,
@@ -641,6 +685,7 @@ class TransformerDecoderLayer(nn.Module):
             self.encoder_attn = MultiheadAttention(
                 self.embed_dim,
                 args.decoder_attention_heads,
+                qkvdim=self.decoder_qkv_dim,
                 kdim=getattr(args, 'encoder_embed_dim', None),
                 vdim=getattr(args, 'encoder_embed_dim', None),
                 dropout=args.attention_dropout,
@@ -648,8 +693,8 @@ class TransformerDecoderLayer(nn.Module):
             )
             self.encoder_attn_layer_norm = LayerNorm(self.embed_dim, export=export)
 
-        self.fc1 = Linear(self.embed_dim, args.decoder_ffn_embed_dim)
-        self.fc2 = Linear(args.decoder_ffn_embed_dim, self.embed_dim)
+        self.fc1 = Linear(self.embed_dim, self.decoder_ffn_embed_dim)
+        self.fc2 = Linear(self.decoder_ffn_embed_dim, self.embed_dim)
 
         self.final_layer_norm = LayerNorm(self.embed_dim, export=export)
         self.need_attn = True
@@ -766,14 +811,16 @@ def Linear(in_features, out_features, bias=True):
 def base_architecture(args):
     args.encoder_embed_path = getattr(args, 'encoder_embed_path', None)
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 512)
+    args.encoder_qkv_dim = getattr(args, 'encoder_qkv_dim', args.encoder_embed_dim)
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 2048)
     args.encoder_layers = getattr(args, 'encoder_layers', 6)
     args.encoder_attention_heads = getattr(args, 'encoder_attention_heads', 8)
     args.encoder_normalize_before = getattr(args, 'encoder_normalize_before', False)
     args.encoder_learned_pos = getattr(args, 'encoder_learned_pos', False)
     args.decoder_embed_path = getattr(args, 'decoder_embed_path', None)
-    args.decoder_embed_dim = getattr(args, 'decoder_embed_dim', args.encoder_embed_dim)
-    args.decoder_ffn_embed_dim = getattr(args, 'decoder_ffn_embed_dim', args.encoder_ffn_embed_dim)
+    args.decoder_embed_dim = getattr(args, 'decoder_embed_dim', 512)
+    args.decoder_qkv_dim = getattr(args, 'decoder_qkv_dim', args.decoder_embed_dim)
+    args.decoder_ffn_embed_dim = getattr(args, 'decoder_ffn_embed_dim', 2048)
     args.decoder_layers = getattr(args, 'decoder_layers', 6)
     args.decoder_attention_heads = getattr(args, 'decoder_attention_heads', 8)
     args.decoder_normalize_before = getattr(args, 'decoder_normalize_before', False)

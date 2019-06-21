@@ -19,19 +19,20 @@ class MultiheadAttention(nn.Module):
     See "Attention Is All You Need" for more details.
     """
 
-    def __init__(self, embed_dim, num_heads, kdim=None, vdim=None, dropout=0., bias=True,
+    def __init__(self, embed_dim, num_heads, qkvdim=None, kdim=None, vdim=None, dropout=0., bias=True,
                  add_bias_kv=False, add_zero_attn=False, self_attention=False,
                  encoder_decoder_attention=False):
         super().__init__()
         self.embed_dim = embed_dim
+        self.qkvdim = qkvdim if qkvdim is not None else embed_dim
         self.kdim = kdim if kdim is not None else embed_dim
         self.vdim = vdim if vdim is not None else embed_dim
-        self.qkv_same_dim = self.kdim == embed_dim and self.vdim == embed_dim
+        self.qkv_same_dim = self.kdim == embed_dim and self.vdim == self.embed_dim
 
         self.num_heads = num_heads
         self.dropout = dropout
-        self.head_dim = embed_dim // num_heads
-        assert self.head_dim * num_heads == self.embed_dim, "embed_dim must be divisible by num_heads"
+        self.head_dim = self.qkvdim // num_heads
+        assert self.head_dim * num_heads == self.qkvdim, "q_dim must be divisible by num_heads"
         self.scaling = self.head_dim ** -0.5
 
         self.self_attention = self_attention
@@ -42,22 +43,22 @@ class MultiheadAttention(nn.Module):
 
 
         if self.qkv_same_dim:
-            self.in_proj_weight = Parameter(torch.Tensor(3 * embed_dim, embed_dim))
+            self.in_proj_weight = Parameter(torch.Tensor(3 * self.qkvdim, embed_dim))
         else:
-            self.k_proj_weight = Parameter(torch.Tensor(embed_dim, self.kdim))
-            self.v_proj_weight = Parameter(torch.Tensor(embed_dim, self.vdim))
-            self.q_proj_weight = Parameter(torch.Tensor(embed_dim, embed_dim))
+            self.k_proj_weight = Parameter(torch.Tensor(self.qkvdim, self.kdim))
+            self.v_proj_weight = Parameter(torch.Tensor(self.qkvdim, self.vdim))
+            self.q_proj_weight = Parameter(torch.Tensor(self.qkvdim, embed_dim))
 
         if bias:
-            self.in_proj_bias = Parameter(torch.Tensor(3 * embed_dim))
+            self.in_proj_bias = Parameter(torch.Tensor(3 * self.qkvdim))
         else:
             self.register_parameter('in_proj_bias', None)
 
-        self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
+        self.out_proj = nn.Linear(self.qkvdim, embed_dim, bias=bias)
 
         if add_bias_kv:
-            self.bias_k = Parameter(torch.Tensor(1, 1, embed_dim))
-            self.bias_v = Parameter(torch.Tensor(1, 1, embed_dim))
+            self.bias_k = Parameter(torch.Tensor(1, 1, self.qkvdim))
+            self.bias_v = Parameter(torch.Tensor(1, 1, self.qkvdim))
         else:
             self.bias_k = self.bias_v = None
 
@@ -222,9 +223,9 @@ class MultiheadAttention(nn.Module):
         if (self.onnx_trace and attn.size(1) == 1):
             # when ONNX tracing a single decoder step (sequence length == 1)
             # the transpose is a no-op copy before view, thus unnecessary
-            attn = attn.contiguous().view(tgt_len, bsz, embed_dim)
+            attn = attn.contiguous().view(tgt_len, bsz, self.qkvdim)
         else:
-            attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
+            attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, self.qkvdim)
         attn = self.out_proj(attn)
 
         if need_weights:
@@ -241,31 +242,31 @@ class MultiheadAttention(nn.Module):
 
     def in_proj_q(self, query):
         if self.qkv_same_dim:
-            return self._in_proj(query, end=self.embed_dim)
+            return self._in_proj(query, end=self.qkvdim)
         else:
             bias = self.in_proj_bias
             if bias is not None:
-                bias = bias[:self.embed_dim]
+                bias = bias[:self.qkvdim]
             return F.linear(query, self.q_proj_weight, bias)
 
     def in_proj_k(self, key):
         if self.qkv_same_dim:
-            return self._in_proj(key, start=self.embed_dim, end=2 * self.embed_dim)
+            return self._in_proj(key, start=self.qkvdim, end=2 * self.qkvdim)
         else:
             weight = self.k_proj_weight
             bias = self.in_proj_bias
             if bias is not None:
-                bias = bias[self.embed_dim:2 * self.embed_dim]
+                bias = bias[self.qkvdim:2 * self.qkvdim]
             return F.linear(key, weight, bias)
 
     def in_proj_v(self, value):
         if self.qkv_same_dim:
-            return self._in_proj(value, start=2 * self.embed_dim)
+            return self._in_proj(value, start=2 * self.qkvdim)
         else:
             weight = self.v_proj_weight
             bias = self.in_proj_bias
             if bias is not None:
-                bias = bias[2 * self.embed_dim:]
+                bias = bias[2 * self.qkvdim:]
             return F.linear(value, weight, bias)
 
     def _in_proj(self, input, start=0, end=None):
