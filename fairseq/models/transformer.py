@@ -655,7 +655,7 @@ class TransformerDecoderLayer(nn.Module):
             self.decoder_attention_heads = args.decoder_attention_heads[layer_id]
         self.self_attn = MultiheadAttention(
             embed_dim=self.embed_dim,
-            num_heads=args.decoder_attention_heads,
+            num_heads=self.decoder_attention_heads,
             qkvdim=self.decoder_qkv_dim,
             dropout=args.attention_dropout,
             add_bias_kv=add_bias_kv,
@@ -684,7 +684,7 @@ class TransformerDecoderLayer(nn.Module):
         else:
             self.encoder_attn = MultiheadAttention(
                 self.embed_dim,
-                args.decoder_attention_heads,
+                self.decoder_attention_heads,
                 qkvdim=self.decoder_qkv_dim,
                 kdim=getattr(args, 'encoder_embed_dim', None),
                 vdim=getattr(args, 'encoder_embed_dim', None),
