@@ -77,7 +77,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
                             help='path to pre-trained encoder embedding')
         parser.add_argument('--encoder-embed-dim', type=int, metavar='N',
                             help='encoder embedding dimension')
-        parser.add_argument('--encoder-q-dim', type=str,
+        parser.add_argument('--encoder-qkv-dim', type=str,
                             help='encoder q dimension')
         parser.add_argument('--encoder-ffn-embed-dim', type=str,
                             help='encoder embedding dimension for FFN')
@@ -93,7 +93,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
                             help='path to pre-trained decoder embedding')
         parser.add_argument('--decoder-embed-dim', type=int, metavar='N',
                             help='decoder embedding dimension')
-        parser.add_argument('--decoder-q-dim', type=str,
+        parser.add_argument('--decoder-qkv-dim', type=str,
                             help='decoder qkv dimension')
         parser.add_argument('--decoder-ffn-embed-dim', type=str,
                             help='decoder embedding dimension for FFN')
