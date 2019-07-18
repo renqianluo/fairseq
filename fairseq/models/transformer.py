@@ -196,7 +196,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
             args.decoder_dropout = list(map(float, args.decoder_dropout.strip().split()))
         if isinstance(args.decoder_attention_dropout, str):
             args.decoder_attention_dropout = list(map(float, args.decoder_attention_dropout.strip().split()))
-        if isinstance(args.encoder_activation_dropout, str):
+        if isinstance(args.decoder_activation_dropout, str):
             args.decoder_activation_dropout = list(map(float, args.decoder_activation_dropout.strip().split()))
 
         encoder = cls.build_encoder(args, src_dict, encoder_embed_tokens)
