@@ -64,20 +64,23 @@ class TransformerModel(FairseqEncoderDecoderModel):
     def add_args(parser):
         """Add model-specific arguments to the parser."""
         # fmt: off
-        parser.add_argument('--activation-fn',
-                            choices=utils.get_available_activation_fns(),
-                            help='activation function to use')
-        parser.add_argument('--dropout', type=float, metavar='D',
-                            help='dropout probability')
-        parser.add_argument('--attention-dropout', type=float, metavar='D',
+        parser.add_argument('--encoder-activation-fn', type=str,
+                            #choices=utils.get_available_activation_fns(),
+                            help='activation function to use in encoder')
+        parser.add_argument('--decoder-activation-fn', type=str,
+                            #choices=utils.get_available_activation_fns(),
+                            help='activation function to use in decoder')
+        parser.add_argument('--encoder-dropout', type=str, metavar='D',
+                            help='encoder-dropout probability')
+        parser.add_argument('--encoder-attention-dropout', type=str, metavar='D',
                             help='dropout probability for attention weights')
-        parser.add_argument('--activation-dropout', '--relu-dropout', type=float, metavar='D',
+        parser.add_argument('--encoder-activation-dropout', '--encoder-relu-dropout', type=str, metavar='D',
                             help='dropout probability after activation in FFN.')
         parser.add_argument('--encoder-embed-path', type=str, metavar='STR',
                             help='path to pre-trained encoder embedding')
         parser.add_argument('--encoder-embed-dim', type=int, metavar='N',
                             help='encoder embedding dimension')
-        parser.add_argument('--encoder-qkv-dim', type=str,
+        parser.add_argument('--encoder-qkv-dim', type=str, metavar='N',
                             help='encoder q dimension')
         parser.add_argument('--encoder-ffn-embed-dim', type=str,
                             help='encoder embedding dimension for FFN')
@@ -89,11 +92,17 @@ class TransformerModel(FairseqEncoderDecoderModel):
                             help='apply layernorm before each encoder block')
         parser.add_argument('--encoder-learned-pos', action='store_true',
                             help='use learned positional embeddings in the encoder')
+        parser.add_argument('--decoder-dropout', type=str, metavar='D',
+                            help='decoder-dropout probability')
+        parser.add_argument('--decoder-attention-dropout', type=str, metavar='D',
+                            help='dropout probability for attention weights')
+        parser.add_argument('-decoder-activation-dropout', '--decoder-relu-dropout', type=str, metavar='D',
+                            help='dropout probability after activation in FFN.')
         parser.add_argument('--decoder-embed-path', type=str, metavar='STR',
                             help='path to pre-trained decoder embedding')
         parser.add_argument('--decoder-embed-dim', type=int, metavar='N',
                             help='decoder embedding dimension')
-        parser.add_argument('--decoder-qkv-dim', type=str,
+        parser.add_argument('--decoder-qkv-dim', type=str, metavar='N',
                             help='decoder qkv dimension')
         parser.add_argument('--decoder-ffn-embed-dim', type=str,
                             help='decoder embedding dimension for FFN')
@@ -206,7 +215,10 @@ class TransformerEncoder(FairseqEncoder):
         super().__init__(dictionary)
         self.register_buffer('version', torch.Tensor([3]))
 
-        self.dropout = args.dropout
+        if isinstance(args.encoder_dropout, int):
+            self.dropout = args.encoder_dropout
+        else:
+            self.dropout = args.encoder_dropout[0]
 
         embed_dim = embed_tokens.embedding_dim
         self.padding_idx = embed_tokens.padding_idx
@@ -333,7 +345,10 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         super().__init__(dictionary)
         self.register_buffer('version', torch.Tensor([3]))
 
-        self.dropout = args.dropout
+        if isinstance(args.decoder_dropout, int):
+            self.dropout = args.decoder_dropout
+        else:
+            self.dropout = args.decoder_dropout[0]
         self.share_input_output_embed = args.share_decoder_input_output_embed
 
         input_embed_dim = embed_tokens.embedding_dim
@@ -549,19 +564,37 @@ class TransformerEncoderLayer(nn.Module):
             self.encoder_attention_heads = args.encoder_attention_heads
         else:
             self.encoder_attention_heads = args.encoder_attention_heads[layer_id]
+
+        if isinstance(args.encoder_attention_dropout, int):
+            self.attention_dropout = args.encoder_attention_dropout
+        else:
+            self.attention_dropout = args.encoder_attention_dropout[layer_id]
         self.self_attn = MultiheadAttention(
             self.embed_dim, self.encoder_attention_heads, qkvdim=self.encoder_qkv_dim,
-            dropout=args.attention_dropout, self_attention=True
+            dropout=self.attention_dropout, self_attention=True
         )
         self.self_attn_layer_norm = LayerNorm(self.embed_dim)
-        self.dropout = args.dropout
+        if isinstance(args.encoder_dropout, int):
+            self.dropout = args.encoder_dropout
+        else:
+            self.dropout = args.encoder_dropout[layer_id]
+        activation_fn = getattr(args, 'encoder_activation_fn', 'relu')
+        if len(activation_fn.split()) > 1:
+            activation_fn = activation_fn.strip().split()[layer_id]
         self.activation_fn = utils.get_activation_fn(
-            activation=getattr(args, 'activation_fn', 'relu')
-        )
-        self.activation_dropout = getattr(args, 'activation_dropout', 0)
+            activation=activation_fn)
+        if isinstance(args.encoder_activation_dropout, int):
+            self.activation_dropout = args.encoder_activation_dropout
+        else:
+            self.activation_dropout = args.encoder_activation_dropout[layer_id]
+        #self.activation_dropout = getattr(args, 'activation_dropout', 0)
         if self.activation_dropout == 0:
             # for backwards compatibility with models that use args.relu_dropout
-            self.activation_dropout = getattr(args, 'relu_dropout', 0)
+            #self.activation_dropout = getattr(args, 'relu_dropout', 0)
+            if isinstance(args.encoder_relu_dropout, int):
+                self.activation_dropout = args.encoder_relu_dropout
+            else:
+                self.activation_dropout = args.encoder_relu_dropout[layer_id]
         self.normalize_before = args.encoder_normalize_before
         self.fc1 = Linear(self.embed_dim, self.encoder_ffn_embed_dim)
         self.fc2 = Linear(self.encoder_ffn_embed_dim, self.embed_dim)
@@ -653,23 +686,41 @@ class TransformerDecoderLayer(nn.Module):
             self.decoder_attention_heads = args.decoder_attention_heads
         else:
             self.decoder_attention_heads = args.decoder_attention_heads[layer_id]
+        if isinstance(args.decoder_attention_dropout, int):
+            self.attention_dropout = args.decoder_attention_dropout
+        else:
+            self.attention_dropout = args.decoder_attention_dropout[layer_id]
         self.self_attn = MultiheadAttention(
             embed_dim=self.embed_dim,
             num_heads=self.decoder_attention_heads,
             qkvdim=self.decoder_qkv_dim,
-            dropout=args.attention_dropout,
+            dropout=self.attention_dropout,
             add_bias_kv=add_bias_kv,
             add_zero_attn=add_zero_attn,
             self_attention=True
         )
-        self.dropout = args.dropout
+        if isinstance(args.decoder_dropout, int):
+            self.dropout = args.decoder_dropout
+        else:
+            self.dropout = args.decoder_dropout[layer_id]
+        activation_fn = getattr(args, 'decoder_activation_fn', 'relu')
+        if len(activation_fn.split()) > 1:
+            activation_fn = activation_fn.strip().split()[layer_id]
         self.activation_fn = utils.get_activation_fn(
-            activation=getattr(args, 'activation_fn', 'relu')
-        )
-        self.activation_dropout = getattr(args, 'activation_dropout', 0)
+            activation=activation_fn)
+        #self.activation_dropout = getattr(args, 'activation_dropout', 0)
+        if isinstance(args.decoder_activation_dropout, int):
+            self.activation_dropout = args.decoder_activation_dropout
+        else:
+            self.activation_dropout = args.decoder_activation_dropout[layer_id]
+        #self.activation_dropout = getattr(args, 'activation_dropout', 0)
         if self.activation_dropout == 0:
             # for backwards compatibility with models that use args.relu_dropout
-            self.activation_dropout = getattr(args, 'relu_dropout', 0)
+            #self.activation_dropout = getattr(args, 'relu_dropout', 0)
+            if isinstance(args.decoder_relu_dropout, int):
+                self.activation_dropout = args.decoder_relu_dropout
+            else:
+                self.activation_dropout = args.decoder_relu_dropout[layer_id]
         self.normalize_before = args.decoder_normalize_before
 
         # use layerNorm rather than FusedLayerNorm for exporting.
@@ -688,7 +739,7 @@ class TransformerDecoderLayer(nn.Module):
                 qkvdim=self.decoder_qkv_dim,
                 kdim=getattr(args, 'encoder_embed_dim', None),
                 vdim=getattr(args, 'encoder_embed_dim', None),
-                dropout=args.attention_dropout,
+                dropout=self.attention_dropout,
                 encoder_decoder_attention=True,
             )
             self.encoder_attn_layer_norm = LayerNorm(self.embed_dim, export=export)
@@ -825,10 +876,14 @@ def base_architecture(args):
     args.decoder_attention_heads = getattr(args, 'decoder_attention_heads', 8)
     args.decoder_normalize_before = getattr(args, 'decoder_normalize_before', False)
     args.decoder_learned_pos = getattr(args, 'decoder_learned_pos', False)
-    args.attention_dropout = getattr(args, 'attention_dropout', 0.)
-    args.activation_dropout = getattr(args, 'activation_dropout', 0.)
-    args.activation_fn = getattr(args, 'activation_fn', 'relu')
-    args.dropout = getattr(args, 'dropout', 0.1)
+    args.encoder_attention_dropout = getattr(args, 'encoder_attention_dropout', 0.)
+    args.encoder_activation_dropout = getattr(args, 'encoder_activation_dropout', 0.)
+    args.decoder_attention_dropout = getattr(args, 'decoder_attention_dropout', 0.)
+    args.decoder_activation_dropout = getattr(args, 'decoder_activation_dropout', 0.)
+    args.encoder_activation_fn = getattr(args, 'encoder_activation_fn', 'relu')
+    args.decoder_activation_fn = getattr(args, 'decoder_activation_fn', 'relu')
+    args.encoder_dropout = getattr(args, 'encoder_dropout', 0.1)
+    args.decoder_dropout = getattr(args, 'decoder_dropout', 0.1)
     args.adaptive_softmax_cutoff = getattr(args, 'adaptive_softmax_cutoff', None)
     args.adaptive_softmax_dropout = getattr(args, 'adaptive_softmax_dropout', 0)
     args.share_decoder_input_output_embed = getattr(args, 'share_decoder_input_output_embed', False)
@@ -868,19 +923,22 @@ def transformer_vaswani_wmt_en_de_big(args):
     args.decoder_embed_dim = getattr(args, 'decoder_embed_dim', 1024)
     args.decoder_ffn_embed_dim = getattr(args, 'decoder_ffn_embed_dim', 4096)
     args.decoder_attention_heads = getattr(args, 'decoder_attention_heads', 16)
-    args.dropout = getattr(args, 'dropout', 0.3)
+    args.encoder_dropout = getattr(args, 'encoder_dropout', 0.3)
+    args.decoder_dropout = getattr(args, 'decoder_dropout', 0.3)
     base_architecture(args)
 
 
 @register_model_architecture('transformer', 'transformer_vaswani_wmt_en_fr_big')
 def transformer_vaswani_wmt_en_fr_big(args):
-    args.dropout = getattr(args, 'dropout', 0.1)
+    args.encoder_dropout = getattr(args, 'encoder_dropout', 0.1)
+    args.decoder_dropout = getattr(args, 'decoder_dropout', 0.1)
     transformer_vaswani_wmt_en_de_big(args)
 
 
 @register_model_architecture('transformer', 'transformer_wmt_en_de_big')
 def transformer_wmt_en_de_big(args):
-    args.attention_dropout = getattr(args, 'attention_dropout', 0.1)
+    args.encoder_attention_dropout = getattr(args, 'encoder_attention_dropout', 0.1)
+    args.decoder_attention_dropout = getattr(args, 'decoder_attention_dropout', 0.1)
     transformer_vaswani_wmt_en_de_big(args)
 
 
@@ -889,6 +947,8 @@ def transformer_wmt_en_de_big(args):
 def transformer_wmt_en_de_big_t2t(args):
     args.encoder_normalize_before = getattr(args, 'encoder_normalize_before', True)
     args.decoder_normalize_before = getattr(args, 'decoder_normalize_before', True)
-    args.attention_dropout = getattr(args, 'attention_dropout', 0.1)
-    args.activation_dropout = getattr(args, 'activation_dropout', 0.1)
+    args.encoder_attention_dropout = getattr(args, 'encoder_attention_dropout', 0.1)
+    args.encoder_activation_dropout = getattr(args, 'encoder_activation_dropout', 0.1)
+    args.decoder_attention_dropout = getattr(args, 'decoder_attention_dropout', 0.1)
+    args.decoder_activation_dropout = getattr(args, 'decoder_activation_dropout', 0.1)
     transformer_vaswani_wmt_en_de_big(args)
