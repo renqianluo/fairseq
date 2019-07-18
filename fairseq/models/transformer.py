@@ -96,7 +96,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
                             help='decoder-dropout probability')
         parser.add_argument('--decoder-attention-dropout', type=str, metavar='D',
                             help='dropout probability for attention weights')
-        parser.add_argument('-decoder-activation-dropout', '--decoder-relu-dropout', type=str, metavar='D',
+        parser.add_argument('--decoder-activation-dropout', '--decoder-relu-dropout', type=str, metavar='D',
                             help='dropout probability after activation in FFN.')
         parser.add_argument('--decoder-embed-path', type=str, metavar='STR',
                             help='path to pre-trained decoder embedding')
@@ -588,13 +588,9 @@ class TransformerEncoderLayer(nn.Module):
         else:
             self.activation_dropout = args.encoder_activation_dropout[layer_id]
         #self.activation_dropout = getattr(args, 'activation_dropout', 0)
-        if self.activation_dropout == 0:
+        #if self.activation_dropout == 0:
             # for backwards compatibility with models that use args.relu_dropout
             #self.activation_dropout = getattr(args, 'relu_dropout', 0)
-            if isinstance(args.encoder_relu_dropout, int):
-                self.activation_dropout = args.encoder_relu_dropout
-            else:
-                self.activation_dropout = args.encoder_relu_dropout[layer_id]
         self.normalize_before = args.encoder_normalize_before
         self.fc1 = Linear(self.embed_dim, self.encoder_ffn_embed_dim)
         self.fc2 = Linear(self.encoder_ffn_embed_dim, self.embed_dim)
@@ -714,13 +710,9 @@ class TransformerDecoderLayer(nn.Module):
         else:
             self.activation_dropout = args.decoder_activation_dropout[layer_id]
         #self.activation_dropout = getattr(args, 'activation_dropout', 0)
-        if self.activation_dropout == 0:
+        #if self.activation_dropout == 0:
             # for backwards compatibility with models that use args.relu_dropout
             #self.activation_dropout = getattr(args, 'relu_dropout', 0)
-            if isinstance(args.decoder_relu_dropout, int):
-                self.activation_dropout = args.decoder_relu_dropout
-            else:
-                self.activation_dropout = args.decoder_relu_dropout[layer_id]
         self.normalize_before = args.decoder_normalize_before
 
         # use layerNorm rather than FusedLayerNorm for exporting.
