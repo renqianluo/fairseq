@@ -193,7 +193,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
         if isinstance(args.decoder_attention_heads, str):
             args.decoder_attention_heads = list(map(int, args.decoder_attention_heads.strip().split()))
         if isinstance(args.decoder_dropout, str):
-            args.decoder_dropout = list(map(float, args.encoder_dropout.strip().split()))
+            args.decoder_dropout = list(map(float, args.decoder_dropout.strip().split()))
         if isinstance(args.decoder_attention_dropout, str):
             args.decoder_attention_dropout = list(map(float, args.decoder_attention_dropout.strip().split()))
         if isinstance(args.encoder_activation_dropout, str):
