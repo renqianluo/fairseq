@@ -180,12 +180,24 @@ class TransformerModel(FairseqEncoderDecoderModel):
             args.encoder_ffn_embed_dim = list(map(int, args.encoder_ffn_embed_dim.strip().split()))
         if isinstance(args.encoder_attention_heads, str):
             args.encoder_attention_heads = list(map(int, args.encoder_attention_heads.strip().split()))
+        if isinstance(args.encoder_dropout, str):
+            args.encoder_dropout = list(map(float, args.encoder_dropout.strip().split()))
+        if isinstance(args.encoder_attention_dropout, str):
+            args.encoder_attention_dropout = list(map(float, args.encoder_attention_dropout.strip().split()))
+        if isinstance(args.encoder_activation_dropout, str):
+            args.encoder_activation_dropout = list(map(float, args.encoder_activation_dropout.strip().split()))
         if isinstance(args.decoder_qkv_dim, str):
             args.decoder_qkv_dim = list(map(int, args.decoder_qkv_dim.strip().split()))
         if isinstance(args.decoder_ffn_embed_dim, str):
             args.decoder_ffn_embed_dim = list(map(int, args.decoder_ffn_embed_dim.strip().split()))
         if isinstance(args.decoder_attention_heads, str):
             args.decoder_attention_heads = list(map(int, args.decoder_attention_heads.strip().split()))
+        if isinstance(args.decoder_dropout, str):
+            args.decoder_dropout = list(map(float, args.encoder_dropout.strip().split()))
+        if isinstance(args.decoder_attention_dropout, str):
+            args.decoder_attention_dropout = list(map(float, args.decoder_attention_dropout.strip().split()))
+        if isinstance(args.encoder_activation_dropout, str):
+            args.decoder_activation_dropout = list(map(float, args.decoder_activation_dropout.strip().split()))
 
         encoder = cls.build_encoder(args, src_dict, encoder_embed_tokens)
         decoder = cls.build_decoder(args, tgt_dict, decoder_embed_tokens)
