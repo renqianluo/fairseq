@@ -227,7 +227,7 @@ class TransformerEncoder(FairseqEncoder):
         super().__init__(dictionary)
         self.register_buffer('version', torch.Tensor([3]))
 
-        if isinstance(args.encoder_dropout, int):
+        if isinstance(args.encoder_dropout, float):
             self.dropout = args.encoder_dropout
         else:
             self.dropout = args.encoder_dropout[0]
@@ -357,7 +357,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         super().__init__(dictionary)
         self.register_buffer('version', torch.Tensor([3]))
 
-        if isinstance(args.decoder_dropout, int):
+        if isinstance(args.decoder_dropout, float):
             self.dropout = args.decoder_dropout
         else:
             self.dropout = args.decoder_dropout[0]
@@ -577,7 +577,7 @@ class TransformerEncoderLayer(nn.Module):
         else:
             self.encoder_attention_heads = args.encoder_attention_heads[layer_id]
 
-        if isinstance(args.encoder_attention_dropout, int):
+        if isinstance(args.encoder_attention_dropout, float):
             self.attention_dropout = args.encoder_attention_dropout
         else:
             self.attention_dropout = args.encoder_attention_dropout[layer_id]
@@ -586,7 +586,7 @@ class TransformerEncoderLayer(nn.Module):
             dropout=self.attention_dropout, self_attention=True
         )
         self.self_attn_layer_norm = LayerNorm(self.embed_dim)
-        if isinstance(args.encoder_dropout, int):
+        if isinstance(args.encoder_dropout, float):
             self.dropout = args.encoder_dropout
         else:
             self.dropout = args.encoder_dropout[layer_id]
@@ -595,7 +595,7 @@ class TransformerEncoderLayer(nn.Module):
             activation_fn = activation_fn.strip().split()[layer_id]
         self.activation_fn = utils.get_activation_fn(
             activation=activation_fn)
-        if isinstance(args.encoder_activation_dropout, int):
+        if isinstance(args.encoder_activation_dropout, float):
             self.activation_dropout = args.encoder_activation_dropout
         else:
             self.activation_dropout = args.encoder_activation_dropout[layer_id]
@@ -694,7 +694,7 @@ class TransformerDecoderLayer(nn.Module):
             self.decoder_attention_heads = args.decoder_attention_heads
         else:
             self.decoder_attention_heads = args.decoder_attention_heads[layer_id]
-        if isinstance(args.decoder_attention_dropout, int):
+        if isinstance(args.decoder_attention_dropout, float):
             self.attention_dropout = args.decoder_attention_dropout
         else:
             self.attention_dropout = args.decoder_attention_dropout[layer_id]
@@ -707,7 +707,7 @@ class TransformerDecoderLayer(nn.Module):
             add_zero_attn=add_zero_attn,
             self_attention=True
         )
-        if isinstance(args.decoder_dropout, int):
+        if isinstance(args.decoder_dropout, float):
             self.dropout = args.decoder_dropout
         else:
             self.dropout = args.decoder_dropout[layer_id]
@@ -717,7 +717,7 @@ class TransformerDecoderLayer(nn.Module):
         self.activation_fn = utils.get_activation_fn(
             activation=activation_fn)
         #self.activation_dropout = getattr(args, 'activation_dropout', 0)
-        if isinstance(args.decoder_activation_dropout, int):
+        if isinstance(args.decoder_activation_dropout, float):
             self.activation_dropout = args.decoder_activation_dropout
         else:
             self.activation_dropout = args.decoder_activation_dropout[layer_id]
